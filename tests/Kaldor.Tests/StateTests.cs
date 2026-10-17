@@ -76,6 +76,30 @@ public sealed class StateTests : IDisposable
     }
 
     [Fact]
+    public void An_older_pre_commit_hook_is_brought_to_the_running_version()
+    {
+        var hook = Path.Combine(_root, ".git", "hooks", "pre-commit");
+        const string Old = "#!/bin/sh\n# mine\n[ \"$CLAUDECODE\" = \"1\" ] || exit 0\nexec dnx --yes --version 1.0.0 Atypical.Kaldor check\n";
+        File.WriteAllText(hook, Old);
+
+        Repo.Find(_root);
+
+        Assert.Equal(Old.Replace("1.0.0", Commands.Version), File.ReadAllText(hook));
+    }
+
+    [Fact]
+    public void A_hook_without_kaldor_is_left_alone()
+    {
+        var hook = Path.Combine(_root, ".git", "hooks", "pre-commit");
+        const string Other = "#!/bin/sh\nnpx lint-staged --version 1.0.0\n";
+        File.WriteAllText(hook, Other);
+
+        Repo.Find(_root);
+
+        Assert.Equal(Other, File.ReadAllText(hook));
+    }
+
+    [Fact]
     public void State_from_kaldor_1_0_moves_to_the_git_directory()
     {
         var dir = Path.Combine(_root, ".kaldor");

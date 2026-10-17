@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace Kaldor;
 
@@ -80,7 +81,7 @@ sealed record LogEntry(
 /// A git repository: <c>.kaldor/</c> in the work tree holds the rules and the intent; the state and the history live
 /// in the git common directory, out of reach of <c>git clean</c> and <c>git worktree remove</c>.
 /// </summary>
-sealed class Repo(string root, string stateDir, string worktree)
+sealed partial class Repo(string root, string stateDir, string worktree)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -109,19 +110,38 @@ sealed class Repo(string root, string stateDir, string worktree)
     {
         if (!Directory.Exists(cwd)) return null;
         var (code, output, _) = Proc.Run(
-            "git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"], cwd);
+            "git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir", "--git-path", "hooks/pre-commit"], cwd);
         if (code != 0) return null;
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        if (lines.Length < 3) return null; // inside .git itself: no work tree
+        if (lines.Length < 4) return null; // inside .git itself: no work tree
         var (gitDir, commonDir) = (Path.GetFullPath(lines[1]), Path.GetFullPath(lines[2]));
         var linked = gitDir != commonDir;
         var stateDir = linked
             ? Path.Combine(commonDir, "kaldor", "worktrees", Path.GetFileName(gitDir))
             : Path.Combine(commonDir, "kaldor");
         var repo = new Repo(Path.GetFullPath(lines[0]), stateDir, linked ? Path.GetFileName(gitDir) : "main");
-        if (repo.Enabled) repo.MoveLegacyState();
+        if (repo.Enabled)
+        {
+            repo.MoveLegacyState();
+            RefreshHook(lines[3]);
+        }
         return repo;
     }
+
+    /// <summary>
+    /// The pre-commit hook pins the version that installed it. After an upgrade, an old checker would read a state
+    /// layout it does not know, so the running version rewrites the pin.
+    /// </summary>
+    static void RefreshHook(string hook)
+    {
+        if (!File.Exists(hook)) return;
+        var text = File.ReadAllText(hook);
+        var updated = HookPin().Replace(text, $"${{1}}{Commands.Version}${{2}}");
+        if (updated != text) File.WriteAllText(hook, updated);
+    }
+
+    [GeneratedRegex(@"(--version )[^\s]+( Atypical\.Kaldor check)")]
+    private static partial Regex HookPin();
 
     /// <summary>Kaldor 1.0 kept the state and the history in <c>.kaldor/</c>: move them once.</summary>
     void MoveLegacyState()

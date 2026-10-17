@@ -1,4 +1,5 @@
 bin/
+!plugin/bin/
 obj/
 *.user
 .vs/

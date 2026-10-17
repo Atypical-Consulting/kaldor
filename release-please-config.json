@@ -11,7 +11,8 @@
         { "type": "json", "path": "plugin/.claude-plugin/plugin.json", "jsonpath": "$.version" },
         { "type": "json", "path": "plugin/hooks/hooks.json", "jsonpath": "$.hooks.PreToolUse[0].hooks[0].args[2]" },
         { "type": "generic", "path": "plugin/bin/kaldor" },
-        { "type": "generic", "path": "plugin/bin/kaldor.cmd" }
+        { "type": "generic", "path": "plugin/bin/kaldor.cmd" },
+        { "type": "generic", "path": "site/index.html" }
       ],
       "changelog-sections": [
         { "type": "feat", "section": "Added" },

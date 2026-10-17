@@ -5,6 +5,8 @@
 [![CI](https://github.com/Atypical-Consulting/kaldor/actions/workflows/ci.yml/badge.svg)](https://github.com/Atypical-Consulting/kaldor/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/Atypical.Kaldor)](https://www.nuget.org/packages/Atypical.Kaldor)
 
+**Documentation: [atypical-consulting.github.io/kaldor](https://atypical-consulting.github.io/kaldor/)**
+
 ## The idea
 
 With agents that code fast, reading every line no longer scales, and a review done by the same agent only validates its own reasoning. Kaldor moves the review to the intent:
@@ -108,6 +110,7 @@ Known costs: about 0.5 s of `dnx` startup on each Bash or edit tool call, and on
 
 ## Documentation
 
+- [Documentation site](https://atypical-consulting.github.io/kaldor/): how it works, install, commands, rules, threat model, costs.
 - [Project dossier](docs/project-dossier.md): scope, architecture, commands, file contracts, requirements, tests, threats, roadmap.
 - [Architecture analysis](docs/architecture-analysis.md): each building block checked against the Claude Code documentation, identified flaws and comparison of the variants.
 

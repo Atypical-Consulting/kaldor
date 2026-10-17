@@ -7,3 +7,7 @@ obj/
 .kaldor/log/
 artifacts/
 TestResults/
+# impeccable working files: decision sketches and review captures
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/questions/

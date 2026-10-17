@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/Atypical-Consulting/kaldor/compare/v1.0.1...v1.0.2) (2026-10-17)
+
+
+### Fixed
+
+* refuse human-only commands only when they actually run ([#12](https://github.com/Atypical-Consulting/kaldor/issues/12)) ([b579766](https://github.com/Atypical-Consulting/kaldor/commit/b5797663abe459e856a3e14698d84e364889dca2))
+
 ## [1.0.1](https://github.com/Atypical-Consulting/kaldor/compare/v1.0.0...v1.0.1) (2026-10-17)
 
 

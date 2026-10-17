@@ -85,7 +85,7 @@ static class Commands
     {
         var repo = RequireRepo(cwd);
         if (repo.LoadState().IntentHash is null) throw new KaldorException("No frozen intent to amend.");
-        File.WriteAllText(repo.AmendmentPath, text.Trim() + "\n");
+        repo.SaveAmendment(text.Trim() + "\n");
         repo.Log(new LogEntry(DateTimeOffset.Now, "amend-proposed", null, null, null, text, null, null, null));
         Console.WriteLine("Amendment proposed. Ask the user to run `kaldor intent amend --accept` in their own terminal.");
         return 0;
@@ -132,16 +132,18 @@ static class Commands
 
     public static int Report(string cwd, int count)
     {
-        var entries = RequireRepo(cwd).ReadLog().TakeLast(count).ToList();
+        var repo = RequireRepo(cwd);
+        var entries = repo.ReadAllLogs().TakeLast(count).ToList();
         if (entries.Count == 0) Console.WriteLine("No review yet.");
-        foreach (var e in entries) Print(e);
+        foreach (var (worktree, e) in entries) Print(e, worktree == repo.Worktree ? null : worktree);
         return 0;
     }
 
-    static void Print(LogEntry e)
+    static void Print(LogEntry e, string? otherWorktree = null)
     {
         var verdict = e.Verdict switch { "pass" => "ACCEPTED", "block" => "BLOCKED", "approve" => "FORCED", _ => "" };
-        Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}");
+        var where = otherWorktree is null ? "" : $"  [worktree {otherWorktree}]";
+        Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}{where}");
         if (e.Kind != "review" && e.Kind != "dry-run" && e.Kind != "approve" && e.Intent is not null)
             Console.WriteLine($"  intent     {FirstLine(e.Intent)}");
         foreach (var d in e.Deviations ?? []) Console.WriteLine($"  deviation  {d}");

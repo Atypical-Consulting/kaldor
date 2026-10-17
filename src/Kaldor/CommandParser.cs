@@ -27,11 +27,17 @@ static class CommandParser
         "show", "stash", "status", "submodule", "switch", "tag", "worktree",
     ];
 
-    sealed class Findings
+    public sealed class Findings
     {
         public readonly List<CommitCall> Commits = [];
         public bool HumanOnly;
+        /// <summary>Full paths the command writes or deletes, as far as the parser can tell.</summary>
+        public readonly List<string> Writes = [];
     }
+
+    /// <summary>Everything the gate needs to know about a command, in one pass.</summary>
+    public static Findings Analyze(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
+        ScanAll(command, cwd, aliases);
 
     /// <summary>
     /// True when the command runs <c>kaldor approve</c> or <c>kaldor intent amend --accept</c>, directly or through
@@ -65,8 +71,9 @@ static class CommandParser
     static void Scan(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
     {
         if (depth > 5) return;
-        foreach (var segment in Segments(command))
+        foreach (var words in Segments(command))
         {
+            var segment = TakeRedirections(words, cwd, found);
             var i = 0;
             var wrapped = false;
             while (i < segment.Count &&
@@ -99,7 +106,52 @@ static class CommandParser
             {
                 found.HumanOnly = true;
             }
+            else
+            {
+                found.Writes.AddRange(WriteTargets(name, rest).Select(t => Resolve(cwd, t)));
+            }
         }
+    }
+
+    /// <summary>The marker the tokenizer puts in place of a redirection operator; the next word is its target.</summary>
+    internal const string Redirect = "\0>";
+
+    /// <summary>Records the redirection targets and returns the words without them.</summary>
+    static List<string> TakeRedirections(List<string> words, string cwd, Findings found)
+    {
+        var kept = new List<string>();
+        for (var k = 0; k < words.Count; k++)
+        {
+            if (words[k] != Redirect) kept.Add(words[k]);
+            else if (k + 1 < words.Count) found.Writes.Add(Resolve(cwd, words[++k]));
+        }
+        return kept;
+    }
+
+    // Commands that write every path they are given, and those that write only the last one (the destination).
+    static readonly HashSet<string> WritesAll =
+    [
+        "tee", "rm", "rmdir", "touch", "truncate", "shred", "unlink", "mv",
+        "set-content", "add-content", "clear-content", "out-file", "new-item", "remove-item", "move-item",
+        "sc", "ac", "clc", "ni", "ri", "del", "erase", "rd", "mi", "move",
+    ];
+    static readonly HashSet<string> WritesLast = ["cp", "install", "ln", "rsync", "scp", "copy-item", "cpi", "copy"];
+
+    // ponytail: known writers only; a write from a script or an interpreter (python -c) is out of reach.
+    static IEnumerable<string> WriteTargets(string name, List<string> args)
+    {
+        var paths = args.Where(a => !a.StartsWith('-')).ToList();
+        if (WritesAll.Contains(name) || (name == "sed" && args.Any(a => a.StartsWith("-i") || a.StartsWith("--in-place"))))
+            return paths;
+        if (WritesLast.Contains(name)) return paths.TakeLast(1);
+        if (name == "dd") return args.Where(a => a.StartsWith("of=")).Select(a => a[3..]);
+        return [];
+    }
+
+    static string Resolve(string cwd, string path)
+    {
+        try { return Path.GetFullPath(Path.Combine(cwd, path)); }
+        catch (ArgumentException) { return path; }
     }
 
     static void ScanGit(List<string> args, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
@@ -314,6 +366,13 @@ static class CommandParser
                     break;
                 case ';' or '&' or '|' or '(' or ')' or '\n' or '\r':
                     EndSegment();
+                    break;
+                case '>':
+                    // `2>` and `&>`: the file descriptor is not a word. `>>`, `>|` and `>&` are one operator.
+                    if (inWord && word.ToString().All(char.IsAsciiDigit)) { word.Clear(); inWord = false; }
+                    EndWord();
+                    while (i + 1 < command.Length && command[i + 1] is '>' or '|' or '&') i++;
+                    words.Add(Redirect);
                     break;
                 case ' ' or '\t':
                     EndWord();

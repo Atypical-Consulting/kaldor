@@ -31,7 +31,7 @@ Stage and commit as usual. The commit waits for the review (up to a few minutes)
 
 - **Accepted**: the commit goes through.
 - **Rejected**: you receive the deviations. Fix the code so it matches the intent, then commit again. Do not
-  try to get around the review: skipping hooks, writing in `.kaldor/`, committing from a script or rewriting
+  try to get around the review: skipping hooks, writing Kaldor's state or rules, committing from a script or rewriting
   the intent are all blocked, and they waste the user's trust.
 
 ## When the intent itself must change

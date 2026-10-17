@@ -89,7 +89,7 @@ Your commands, from your own terminal:
 }
 ```
 
-Everything else in `.kaldor/` (intent, verdicts, history) is local and ignored by git. The agent cannot write there except to `intent.md`, and only before the intent is frozen.
+`.kaldor/intent.md` is local and ignored by git. The verdicts, the frozen intent hash and the history live in the git directory (`.git/kaldor/`, one folder per worktree), so `git clean` and `git worktree remove` leave them alone and `kaldor report` shows every worktree. The agent can write `intent.md` only before the intent is frozen; its edit tools and the shell writes the gate recognises (redirections, `tee`, `cp`, `mv`, `rm`, `sed -i`, `Set-Content`…) are refused on everything else in `.kaldor/` and `.git/kaldor/`.
 
 ## What it guards against
 
@@ -98,7 +98,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | Shortcut | Why it fails |
 | --- | --- |
 | Framing the reviewer | The hook launches the reviewer with a fixed prompt; the agent never writes a word of it |
-| Writing its own verdict | The verdict is produced inside the hook's process; `.kaldor/` is closed to the agent |
+| Writing its own verdict | The verdict is produced inside the hook's process; the state in `.git/kaldor/` and the rules are closed to the agent's edits and shell writes |
 | Rewriting the intent | Frozen by hash; changes go through an amendment only you can accept |
 | Changing code after review | Verdicts are bound to the hash of the staged diff |
 | `git -C`, `cd x &&`, `bash -c`, aliases | The hook parses the command line itself |

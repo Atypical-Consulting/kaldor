@@ -38,6 +38,7 @@ static class Gate
         // Start from the file's own nearest existing directory, and let git say where that is in the repository:
         // comparing paths ourselves breaks on symlinks such as macOS's /var -> /private/var.
         var full = Path.GetFullPath(Path.Combine(cwd, filePath));
+        if (InGitKaldor(full)) return StateIsKaldors;
         var dir = Path.GetDirectoryName(full);
         while (dir is not null && !Directory.Exists(dir)) dir = Path.GetDirectoryName(dir);
         var repo = dir is null ? null : Repo.Find(dir);
@@ -56,12 +57,38 @@ static class Gate
         return frozen ? null : NoIntent;
     }
 
+    const string StateIsKaldors =
+        "Kaldor's state (.git/kaldor/) and the files in .kaldor/ other than intent.md are written by the kaldor tool only.";
+
+    static string[] Parts(string path) => path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary>True for <c>.git/kaldor</c> and anything under it.</summary>
+    static bool InGitKaldor(string path)
+    {
+        var parts = Parts(path);
+        for (var k = 0; k + 1 < parts.Length; k++)
+            if (parts[k].Equals(".git", StringComparison.OrdinalIgnoreCase) && parts[k + 1].Equals("kaldor", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
+    /// <summary>True for Kaldor's state, for <c>.kaldor</c> itself and for anything in it but <c>intent.md</c>.</summary>
+    static bool IsKaldorState(string path)
+    {
+        if (InGitKaldor(path)) return true;
+        var parts = Parts(path);
+        var k = Array.FindIndex(parts, p => p.Equals(".kaldor", StringComparison.OrdinalIgnoreCase));
+        return k >= 0 && !(k == parts.Length - 2 && parts[^1].Equals("intent.md", StringComparison.OrdinalIgnoreCase));
+    }
+
     static string? GuardCommand(string cwd, string command, Reviewer review)
     {
-        if (CommandParser.RunsHumanOnlyCommand(command, cwd))
+        var found = CommandParser.Analyze(command, cwd);
+        if (found.HumanOnly)
             return "`kaldor approve` and `kaldor intent amend --accept` are reserved for the user, in their own terminal. Ask them.";
+        if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 
-        foreach (var commit in CommandParser.FindCommits(command, cwd))
+        foreach (var commit in found.Commits)
         {
             var repo = Repo.Find(commit.Dir);
             if (repo is not { Enabled: true }) continue;

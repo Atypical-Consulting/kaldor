@@ -76,8 +76,11 @@ sealed record LogEntry(
     DateTimeOffset At, string Kind, string? Verdict, string? DiffHash, string? IntentHash,
     string? Intent, string[]? Deviations, Hunk[]? Hunks, string? Summary);
 
-/// <summary>A git repository and its <c>.kaldor/</c> folder.</summary>
-sealed class Repo(string root)
+/// <summary>
+/// A git repository: <c>.kaldor/</c> in the work tree holds the rules and the intent; the state and the history live
+/// in the git common directory, out of reach of <c>git clean</c> and <c>git worktree remove</c>.
+/// </summary>
+sealed class Repo(string root, string stateDir, string worktree)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -91,9 +94,13 @@ sealed class Repo(string root)
     public string Dir => Path.Combine(Root, ".kaldor");
     public string RulesPath => Path.Combine(Dir, "rules.json");
     public string IntentPath => Path.Combine(Dir, "intent.md");
-    public string AmendmentPath => Path.Combine(Dir, "amendment.md");
-    public string StatePath => Path.Combine(Dir, "state.json");
-    public string LogDir => Path.Combine(Dir, "log");
+    /// <summary><c>&lt;git-common-dir&gt;/kaldor/</c>, or <c>.../kaldor/worktrees/&lt;id&gt;/</c> for a linked worktree.</summary>
+    public string StateDir { get; } = stateDir;
+    /// <summary>The worktree id git uses under <c>worktrees/</c>, or <c>main</c>.</summary>
+    public string Worktree { get; } = worktree;
+    public string AmendmentPath => Path.Combine(StateDir, "amendment.md");
+    public string StatePath => Path.Combine(StateDir, "state.json");
+    public string LogDir => Path.Combine(StateDir, "log");
 
     /// <summary>Kaldor only acts on repositories where <c>kaldor init</c> was run.</summary>
     public bool Enabled => File.Exists(RulesPath);
@@ -101,8 +108,39 @@ sealed class Repo(string root)
     public static Repo? Find(string cwd)
     {
         if (!Directory.Exists(cwd)) return null;
-        var (code, output, _) = Proc.Run("git", ["rev-parse", "--show-toplevel"], cwd);
-        return code == 0 ? new Repo(Path.GetFullPath(output.Trim())) : null;
+        var (code, output, _) = Proc.Run(
+            "git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir"], cwd);
+        if (code != 0) return null;
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length < 3) return null; // inside .git itself: no work tree
+        var (gitDir, commonDir) = (Path.GetFullPath(lines[1]), Path.GetFullPath(lines[2]));
+        var linked = gitDir != commonDir;
+        var stateDir = linked
+            ? Path.Combine(commonDir, "kaldor", "worktrees", Path.GetFileName(gitDir))
+            : Path.Combine(commonDir, "kaldor");
+        var repo = new Repo(Path.GetFullPath(lines[0]), stateDir, linked ? Path.GetFileName(gitDir) : "main");
+        if (repo.Enabled) repo.MoveLegacyState();
+        return repo;
+    }
+
+    /// <summary>Kaldor 1.0 kept the state and the history in <c>.kaldor/</c>: move them once.</summary>
+    void MoveLegacyState()
+    {
+        if (!File.Exists(Path.Combine(Dir, "state.json")) && !Directory.Exists(Path.Combine(Dir, "log")) &&
+            !File.Exists(Path.Combine(Dir, "amendment.md"))) return;
+        Directory.CreateDirectory(LogDir);
+        foreach (var name in new[] { "state.json", "amendment.md" })
+        {
+            var old = Path.Combine(Dir, name);
+            if (File.Exists(old) && !File.Exists(Path.Combine(StateDir, name))) File.Move(old, Path.Combine(StateDir, name));
+        }
+        var oldLog = Path.Combine(Dir, "log");
+        if (!Directory.Exists(oldLog)) return;
+        foreach (var file in Directory.GetFiles(oldLog))
+        {
+            var target = Path.Combine(LogDir, Path.GetFileName(file));
+            if (!File.Exists(target)) File.Move(file, target);
+        }
     }
 
     public static string Hash(string text) =>
@@ -127,7 +165,14 @@ sealed class Repo(string root)
     {
         // ponytail: keeps the last 100 passes; old ones only matter for commits nobody will make again.
         if (state.Passes.Count > 100) state.Passes.RemoveRange(0, state.Passes.Count - 100);
+        Directory.CreateDirectory(StateDir);
         File.WriteAllText(StatePath, JsonSerializer.Serialize(state, Json));
+    }
+
+    public void SaveAmendment(string text)
+    {
+        Directory.CreateDirectory(StateDir);
+        File.WriteAllText(AmendmentPath, text);
     }
 
     public string? ReadIntent() => File.Exists(IntentPath) ? File.ReadAllText(IntentPath) : null;
@@ -139,9 +184,27 @@ sealed class Repo(string root)
         File.WriteAllText(Path.Combine(LogDir, name), JsonSerializer.Serialize(entry, Json));
     }
 
-    public List<LogEntry> ReadLog() =>
-        !Directory.Exists(LogDir) ? [] :
-        Directory.GetFiles(LogDir, "*.json").Order(StringComparer.Ordinal)
-            .Select(f => JsonSerializer.Deserialize<LogEntry>(File.ReadAllText(f), Json)!)
+    public List<LogEntry> ReadLog() => ReadLog(LogDir).Select(e => e.Entry).ToList();
+
+    /// <summary>The history of every worktree, oldest first, each entry with the id of the worktree it came from.</summary>
+    public List<(string Worktree, LogEntry Entry)> ReadAllLogs()
+    {
+        var main = Path.Combine(CommonStateDir, "log");
+        var linked = Path.Combine(CommonStateDir, "worktrees");
+        var dirs = new List<(string, string)> { ("main", main) };
+        if (Directory.Exists(linked))
+            dirs.AddRange(Directory.GetDirectories(linked).Select(d => (Path.GetFileName(d), Path.Combine(d, "log"))));
+        return dirs.SelectMany(d => ReadLog(d.Item2).Select(e => (d.Item1, e.Entry, e.Name)))
+            .OrderBy(e => e.Name, StringComparer.Ordinal)
+            .Select(e => (e.Item1, e.Entry))
             .ToList();
+    }
+
+    /// <summary><c>&lt;git-common-dir&gt;/kaldor/</c>, shared by every worktree.</summary>
+    string CommonStateDir => Worktree == "main" ? StateDir : Path.GetFullPath(Path.Combine(StateDir, "..", ".."));
+
+    static IEnumerable<(string Name, LogEntry Entry)> ReadLog(string dir) =>
+        !Directory.Exists(dir) ? [] :
+        Directory.GetFiles(dir, "*.json").Order(StringComparer.Ordinal)
+            .Select(f => (Path.GetFileName(f), JsonSerializer.Deserialize<LogEntry>(File.ReadAllText(f), Json)!));
 }

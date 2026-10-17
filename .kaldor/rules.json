@@ -1,0 +1,18 @@
+{
+  "sensitive": [
+    "**/Auth/**",
+    "**/Migrations/**",
+    "**/appsettings*.json",
+    ".github/**"
+  ],
+  "trivial": [
+    "**/*.md"
+  ],
+  "reviewer_model": "sonnet",
+  "block_on": [
+    "scope_creep",
+    "sensitive_change",
+    "weakened_tests",
+    "contradicts_intent"
+  ]
+}

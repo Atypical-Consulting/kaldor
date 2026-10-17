@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/Atypical-Consulting/kaldor/compare/v1.1.0...v1.1.1) (2026-10-17)
+
+
+### Fixed
+
+* bring the pre-commit hook to the running version ([#24](https://github.com/Atypical-Consulting/kaldor/issues/24)) ([48b8b35](https://github.com/Atypical-Consulting/kaldor/commit/48b8b355e273d8d3eb9127335e0316b6f3d72612))
+
+
+### Documentation
+
+* bring the README and the site up to date with 1.1.0 ([#21](https://github.com/Atypical-Consulting/kaldor/issues/21)) ([41ab47a](https://github.com/Atypical-Consulting/kaldor/commit/41ab47a79de606f6ddebe4b2574dd9f1b6f3fc93))
+
 ## [1.1.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.0.2...v1.1.0) (2026-10-17)
 
 

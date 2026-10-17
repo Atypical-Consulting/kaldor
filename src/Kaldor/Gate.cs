@@ -35,12 +35,16 @@ static class Gate
     static string? GuardEdit(string cwd, string? filePath)
     {
         if (filePath is null) return null;
+        // Start from the file's own nearest existing directory, and let git say where that is in the repository:
+        // comparing paths ourselves breaks on symlinks such as macOS's /var -> /private/var.
         var full = Path.GetFullPath(Path.Combine(cwd, filePath));
-        var repo = Repo.Find(Directory.Exists(cwd) ? cwd : Path.GetDirectoryName(full)!);
+        var dir = Path.GetDirectoryName(full);
+        while (dir is not null && !Directory.Exists(dir)) dir = Path.GetDirectoryName(dir);
+        var repo = dir is null ? null : Repo.Find(dir);
         if (repo is not { Enabled: true }) return null;
 
-        var rel = Path.GetRelativePath(repo.Root, full).Replace('\\', '/');
-        if (rel.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(rel)) return null;
+        var prefix = Proc.Git(dir!, "rev-parse", "--show-prefix").Trim();
+        var rel = (prefix + Path.GetRelativePath(dir!, full)).Replace('\\', '/');
 
         var frozen = repo.LoadState().IntentHash is not null;
         if (rel == ".kaldor/intent.md")

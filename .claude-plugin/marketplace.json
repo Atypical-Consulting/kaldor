@@ -1,0 +1,15 @@
+{
+  "name": "kaldor",
+  "description": "Kaldor: intent/code review guard for Claude Code",
+  "owner": {
+    "name": "Atypical Consulting",
+    "url": "https://github.com/Atypical-Consulting"
+  },
+  "plugins": [
+    {
+      "name": "kaldor",
+      "source": "./plugin",
+      "description": "Intent/code review guard for Claude Code"
+    }
+  ]
+}

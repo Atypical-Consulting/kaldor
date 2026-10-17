@@ -1,0 +1,20 @@
+{
+  "description": "Kaldor: intent guard on edits, independent review gate on commits",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "dnx",
+            "args": ["--yes", "--version", "0.0.0", "Atypical.Kaldor", "gate"],
+            "onFailure": "block",
+            "timeout": 900,
+            "statusMessage": "Kaldor gate"
+          }
+        ]
+      }
+    ]
+  }
+}

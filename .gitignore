@@ -1,6 +1,9 @@
 bin/
+!plugin/bin/
 obj/
 *.user
 .vs/
 .idea/
 .kaldor/log/
+artifacts/
+TestResults/

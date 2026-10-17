@@ -1,0 +1,53 @@
+using Kaldor;
+
+const string Usage = """
+    kaldor: intent/code review guard for Claude Code
+
+    Usage:
+      kaldor init                       enable Kaldor in this repository
+      kaldor intent freeze              freeze .kaldor/intent.md (the agent runs it)
+      kaldor intent amend "<text>"      propose a change to the frozen intent (the agent)
+      kaldor intent amend --accept      accept the proposed change (you only)
+      kaldor review                     dry-run review of the staged diff, nothing recorded
+      kaldor report [count]             latest reviews at intent level (default 10)
+      kaldor approve                    force the staged diff through (you only)
+      kaldor doctor                     check the installation
+      kaldor gate                       PreToolUse hook entry point (reads the hook JSON on stdin)
+      kaldor check                      git pre-commit hook entry point
+      kaldor --version
+    """;
+
+var cwd = Environment.CurrentDirectory;
+Reviewer review = Claude.Review;
+
+try
+{
+    return args switch
+    {
+        ["gate"] => Gate.Run(Console.In.ReadToEnd(), Console.Error, review),
+        ["check"] => Commands.Check(cwd, review, Environment.GetEnvironmentVariable("CLAUDECODE") == "1", Console.Error),
+        ["init"] => Commands.Init(cwd),
+        ["intent", "freeze"] => Commands.Freeze(cwd),
+        ["intent", "amend", "--accept"] => Commands.AcceptAmendment(cwd),
+        ["intent", "amend", .. var text] when text.Length > 0 => Commands.ProposeAmendment(cwd, string.Join(' ', text)),
+        ["review"] => Commands.Review(cwd, review),
+        ["report"] => Commands.Report(cwd, 10),
+        ["report", var n] when int.TryParse(n, out var count) => Commands.Report(cwd, count),
+        ["approve"] => Commands.Approve(cwd),
+        ["doctor"] => Commands.Doctor(cwd),
+        ["--version"] => Print(Commands.Version, 0),
+        ["--help" or "-h" or "help"] => Print(Usage, 0),
+        _ => Print(Usage, 1),
+    };
+}
+catch (KaldorException ex)
+{
+    Console.Error.WriteLine($"Kaldor: {ex.Message}");
+    return 1;
+}
+
+static int Print(string text, int code)
+{
+    (code == 0 ? Console.Out : Console.Error).WriteLine(text);
+    return code;
+}

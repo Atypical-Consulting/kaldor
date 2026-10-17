@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Kaldor</RootNamespace>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>kaldor</ToolCommandName>
+    <PackageId>Atypical.Kaldor</PackageId>
+    <Description>Intent/code review guard for Claude Code: no agent commit enters the repository without being checked against a declared intent, by a reviewer the agent does not control.</Description>
+    <PackageTags>claude-code;code-review;ai-agents;git-hooks;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kaldor.Tests" />
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+</Project>

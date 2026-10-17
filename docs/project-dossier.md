@@ -2,6 +2,8 @@
 
 October 17, 2026 · Philippe Matray, Atypical Consulting
 
+**Status: v1 implemented.** This dossier was written before the code; where the implementation differs, the text below has been updated and the differences are listed under [Implementation notes](#implementation-notes).
+
 ## Project name
 
 Chosen name: **Kaldor** (command `kaldor`). It is an invented brand, unrelated to the function: it is pronounced the same in French and English, and stands out in a niche crowded with metaphors already taken by Claude Code tools (Countersign, Plumbline, Touchstone, Lockkeeper).
@@ -51,7 +53,7 @@ Version 1 covers commits made by Claude Code in a local repository, on macOS and
 
 ## Architecture
 
-Five components, all shippable in a Claude Code plugin; the hook is the only mandatory checkpoint.
+Five components, all shipped in a Claude Code plugin plus one .NET tool; the hook is the mandatory checkpoint, with a git `pre-commit` hook as a backstop.
 
 ```mermaid
 flowchart LR
@@ -66,10 +68,11 @@ flowchart LR
 | Component | Form | Role |
 | --- | --- | --- |
 | Intent skill | Claude Code skill | Has `.kaldor/intent.md` written and frozen before the code |
-| Intent guard | `PreToolUse` hook on `Edit\|Write` | Rejects any change until an intent is frozen |
-| Commit guard | `PreToolUse` hook on `Bash` (and `PowerShell`) | Detects a commit, computes the hashes, launches the reviewer, blocks or lets through |
-| Reviewer | `claude -p` with a read-only agent | Checks intent, rules and diff against each other; returns the JSON verdict |
-| Rules | `.kaldor/rules.yaml` | Sensitive paths, trivial paths, blocking criteria, model |
+| Intent guard | `PreToolUse` hook on `Edit\|Write\|MultiEdit\|NotebookEdit` | Rejects any change until an intent is frozen, and any write to `.kaldor/` |
+| Commit guard | `PreToolUse` hook on `Bash\|PowerShell` | Detects a commit, computes the hashes, launches the reviewer, blocks or lets through |
+| Commit backstop | git `pre-commit` hook, installed by `kaldor init` | Runs the same check for any commit made inside Claude Code (`CLAUDECODE=1`) that the command parser could not see, such as one run from a script |
+| Reviewer | `claude -p --safe-mode --tools ""` with a fixed system prompt and `--json-schema` | Checks intent, rules and diff against each other; returns the JSON verdict |
+| Rules | `.kaldor/rules.json` | Sensitive paths, trivial paths, blocking criteria, model |
 
 ## Day-to-day usage
 
@@ -77,13 +80,13 @@ You install Kaldor once, enable it per repository, then work with Claude Code as
 
 **Installation, once per machine**
 
-A single step: install the Kaldor plugin in Claude Code from its GitHub marketplace. The plugin brings the hooks, the intent skill and the reviewer definition. The .NET tool does not need to be installed: the hooks launch it via `dnx`, which downloads it into the NuGet cache on first call.
+A single step: install the Kaldor plugin in Claude Code from its GitHub marketplace (`/plugin install kaldor --marketplace Atypical-Consulting/kaldor`). The plugin brings the hooks, the intent skill and a `kaldor` launcher on the agent's PATH. The .NET tool does not need to be installed: the hooks launch it via `dnx`, which downloads it into the NuGet cache on first call.
 
 ```json
 {
   "type": "command",
   "command": "dnx",
-  "args": ["Atypical.Kaldor@1.0.0", "--yes", "gate"],
+  "args": ["--yes", "--version", "1.0.0", "Atypical.Kaldor", "gate"],
   "onFailure": "block",
   "timeout": 900
 }
@@ -91,7 +94,7 @@ A single step: install the Kaldor plugin in Claude Code from its GitHub marketpl
 
 Three choices in this `hooks.json` excerpt:
 
-- **Pinned version**: updating the plugin updates the tool; plugin and tool cannot drift apart.
+- **Pinned version**: updating the plugin updates the tool; plugin and tool cannot drift apart. The version is its own array element so release-please can stamp it.
 - **`--yes` is mandatory**: without it, the first run waits for a confirmation, the hook fails and `onFailure` blocks every commit.
 - **Exec form** (`command` + `args`): no intermediate shell, identical behavior on macOS, Windows and Linux.
 
@@ -103,7 +106,7 @@ For your own commands, `dnx Atypical.Kaldor report` works as is. If you prefer t
 kaldor init
 ```
 
-Creates `.kaldor/rules.yaml` with default rules (versioned), and `.kaldor/log/` for the review history (ignored by git).
+Creates `.kaldor/rules.json` with default rules (versioned), a `.kaldor/.gitignore` that keeps everything else local, and the git `pre-commit` backstop. Commit `.kaldor/rules.json` yourself: changing the rules is your decision, so the agent's commits of it are reviewed like any other.
 
 **The flow of a task**
 
@@ -118,11 +121,11 @@ Creates `.kaldor/rules.yaml` with default rules (versioned), and `.kaldor/log/` 
 
 **When you disagree with the reviewer**
 
-You can force a rejected commit through with `kaldor approve`, from your own terminal. Two locks reserve this command, and `kaldor intent amend --accept`, for a human: a Claude Code permission rule that denies them to the agent, and an interactive confirmation required by the command itself, which a non-interactive call from the agent cannot answer. Every forced approval is recorded in the history.
+You can force a rejected commit through with `kaldor approve`, from your own terminal. Two locks reserve this command, and `kaldor intent amend --accept`, for a human: the gate refuses any agent command line that runs them, and the command itself requires an interactive confirmation, which a non-interactive call from the agent cannot answer. Every forced approval is recorded in the history.
 
 ## Commands
 
-Eight commands cover v1; day to day, you only type `kaldor report`, and `kaldor approve` when you disagree.
+Nine commands cover v1; day to day, you only type `kaldor report`, and `kaldor approve` when you disagree.
 
 | Command | Who runs it | Role |
 | --- | --- | --- |
@@ -130,10 +133,11 @@ Eight commands cover v1; day to day, you only type `kaldor report`, and `kaldor 
 | `kaldor intent freeze` | The agent | Freezes the current intent and records its hash |
 | `kaldor intent amend` | The agent proposes, you accept | Adds a dated amendment; it only takes effect after your `--accept` |
 | `kaldor gate` | The hook | Hook entry point: detects the commit, computes the hashes, launches the reviewer, returns the verdict |
+| `kaldor check` | The git `pre-commit` hook | Same check on the index being committed, for agent commits the gate could not see |
 | `kaldor review` | You | Dry-run review of the staged diff, non-blocking; useful for testing the rules |
 | `kaldor report` | You | Shows the latest reviews at intent level |
 | `kaldor approve` | You only | Forces a rejected commit through, with a trace; forbidden to the agent |
-| `kaldor doctor` | You | Checks the installation: hooks present, Claude Code version, permission rule, `onFailure` |
+| `kaldor doctor` | You | Checks the installation: git, Claude Code version, plugin, rules, pre-commit hook |
 
 ## Sample report
 
@@ -168,18 +172,18 @@ Must not touch: the database schema, authentication
 Expected files: OrdersController.cs, OrdersQuery.cs, related tests
 ```
 
-**Project rules** (`.kaldor/rules.yaml`), versioned with the repository:
+**Project rules** (`.kaldor/rules.json`), versioned with the repository. JSON rather than YAML so the tool needs no dependency; comments and trailing commas are accepted:
 
-```yaml
-sensitive:
-  - "src/Auth/**"
-  - "**/Migrations/**"
-  - "appsettings*.json"
-trivial:
-  - "**/*.md"
-reviewer_model: sonnet
-block_on: [scope_creep, sensitive_change, weakened_tests]
+```json
+{
+  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
+  "trivial": ["**/*.md"],
+  "reviewer_model": "sonnet",
+  "block_on": ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]
+}
 ```
+
+**State** (`.kaldor/state.json`, local): the frozen intent hash and the (diff hash, intent hash) pairs that passed review or were approved. Reviews and approvals are logged one file each in `.kaldor/log/`.
 
 **Verdict** (the reviewer's JSON output, never written by the agent):
 
@@ -214,18 +218,18 @@ A single GitHub repository under the MIT license, .NET for the core and declarat
 
 ```text
 kaldor/
-  src/
-    Kaldor.Cli/        .NET tool run via dnx (commands, hook entry point)
-    Kaldor.Core/       commit detection, hashes, rules, log
-    Kaldor.Review/     headless reviewer launch and verdict parsing
+  src/Kaldor/          .NET tool run via dnx: commands, gate, command parser, reviewer launch
+  tests/Kaldor.Tests/  parser tests and the bypass suite
   plugin/
     .claude-plugin/plugin.json
-    hooks/hooks.json   PreToolUse guards on Edit|Write and Bash|PowerShell
-    agents/            read-only reviewer definition
+    hooks/hooks.json   one PreToolUse hook on Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell
+    bin/               `kaldor` launchers (sh and cmd) put on the agent's PATH
     skills/intent/     intent-writing skill
-  tests/
-  docs/                GitHub Pages site (kaldor.atypical.consulting)
+  .claude-plugin/marketplace.json
+  docs/
 ```
+
+One project rather than three: the tool is a few hundred lines, and the reviewer needs no agent file because its prompt is passed with `--system-prompt`.
 
 ## Test strategy
 
@@ -249,7 +253,7 @@ The targeted threat is the hurried agent taking a shortcut; the flaws are detail
 | Changing the code after the review | Verdict bound to the hash of the staged diff |
 | Bypassing detection (`git -C`, script) | Command parsing in the script, no narrow `if` filter |
 | Exploiting a failing hook | `onFailure: "block"` |
-| Self-approving or accepting its own amendment | Deny permission rule and required interactive confirmation |
+| Self-approving or accepting its own amendment | Gate refusal of the command and required interactive confirmation |
 
 ## Roadmap
 
@@ -257,7 +261,7 @@ Phase 1 alone already delivers the barrier; the following ones make it comfortab
 
 ```mermaid
 flowchart LR
-  P1["1. Barrier<br/>commit hook<br/>headless reviewer<br/>JSON verdict"] -- "5 bypasses blocked" --> P2["2. Intent<br/>intent skill<br/>Edit/Write guard<br/>rules.yaml"]
+  P1["1. Barrier<br/>commit hook<br/>headless reviewer<br/>JSON verdict"] -- "5 bypasses blocked" --> P2["2. Intent<br/>intent skill<br/>Edit/Write guard<br/>rules.json"]
   P2 -- "20 real commits, cost measured" --> P3["3. Plugin<br/>macOS and Windows<br/>one-command install"]
   P3 -- "installed on both OSes" --> P4["4. Release<br/>public repository<br/>README and demo"]
 ```
@@ -269,13 +273,13 @@ A phase only starts once the previous one's criterion is met. Since the core is 
 The first three unblock everything else and fit in one working session with Claude Code.
 
 - [ ] Check Kaldor in the EUIPO database, reserve the Atypical.Kaldor NuGet ID and publish the GitHub Pages site at kaldor.atypical.consulting
-- [ ] Settle the intent amendment policy
-- [ ] ~~Create the repository with this dossier as the design README~~ (done)
-- [ ] Commit hook POC: detection, hashes, rejection without review, `onFailure: "block"`
-- [ ] Headless reviewer POC with JSON output matching the contract
-- [ ] Bypass test suite (five shortcuts from the threat model)
+- [x] Settle the intent amendment policy: dated amendments, accepted by the human only
+- [x] Create the repository with this dossier as the design README
+- [x] Commit hook: detection, hashes, rejection without review, `onFailure: "block"`
+- [x] Headless reviewer with JSON output matching the contract
+- [x] Bypass test suite (the shortcuts from the threat model)
 - [ ] Try the `agent`-type hook: diff access and latency
-- [ ] Measure cost and latency on 20 real commits, including dnx startup cost on the Bash commands filtered by the hook
+- [ ] Measure cost and latency on 20 real commits (first measures: dnx startup about 0.5 s per tool call; one review 4 to 5 s with Sonnet on a small diff)
 
 ## Decisions: who decides
 
@@ -289,6 +293,17 @@ Of six questions, only two are yours: the trust given to the agent and the code'
 | Verdict cache | Principle 3 | No cache in v1: a cache is a verdict file, hence forgeable. To be reopened only if the measured cost becomes a problem. |
 | Plugin or CLI | Architecture | Both, no choice needed: the hook requires an executable, which is already a CLI; the plugin calls it via dnx with a pinned version. Distributed through NuGet, no npm. |
 | POC platform | Architecture | Write the core as a .NET tool, launched by the hook via dnx in exec form. It runs as is on macOS and Windows, and the question becomes a mere testing detail. |
+
+## Implementation notes
+
+What v1 does differently from the plan above, and why:
+
+- **Rules in JSON, not YAML**: no parser dependency for a file of four keys.
+- **No reviewer agent file**: the reviewer is `claude -p --safe-mode --tools "" --no-session-persistence` with the system prompt and a JSON schema passed on the command line. `--safe-mode` disables CLAUDE.md, plugins and hooks while keeping the user's authentication, so the reviewer reads nothing the agent could have written, and cannot recurse into Kaldor. It has no tools: the diff is sent with five lines of context.
+- **A git `pre-commit` backstop**: the command parser covers `git -C`, `cd x &&`, wrappers, subshells, `bash -c` and aliases, but cannot see inside a script. `kaldor init` installs a `pre-commit` hook that runs the same check whenever `CLAUDECODE=1`, so a commit from a script is reviewed too. Human commits are not affected.
+- **Blocked verdicts are reused**: the same diff against the same intent gets the same answer without a second model call. Passing verdicts are kept in `state.json` so the backstop does not review twice.
+- **Starting a new intent**: `kaldor intent freeze` replaces a frozen intent only when the work tree is clean. Mid-task, the intent can change only through an amendment the human accepts. Known limit: an agent that stashes its work could freeze a new intent; the freeze is logged and shows in `kaldor report`.
+- **Cost of the gate**: every Bash and edit tool call starts the tool through dnx, about 0.5 s. Narrowing the hook with `if` would reopen the bypasses it exists to close.
 
 ## Sources
 

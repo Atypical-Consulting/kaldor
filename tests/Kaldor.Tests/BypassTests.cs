@@ -186,6 +186,8 @@ public sealed class BypassTests : IDisposable
     {
         Assert.Equal(2, Commit("kaldor approve").Code);
         Assert.Equal(2, Commit("dnx --yes Atypical.Kaldor intent amend --accept").Code);
+        // Mentioning them is not running them.
+        Assert.Equal(0, Commit("echo \"ask the user to run kaldor approve\"").Code);
     }
 
     [Fact]

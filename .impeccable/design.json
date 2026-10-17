@@ -1,0 +1,395 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-17T22:36:47+00:00",
+  "title": "Design System: Kaldor",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Enamel Ground",
+        "canonical": "oklch(92.7% 0.005 107)",
+        "tonalRamp": [
+          "#0b0b09",
+          "#242421",
+          "#43433f",
+          "#636360",
+          "#868683",
+          "#ababa7",
+          "#cececa",
+          "#efefeb"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Leaflet Paper",
+        "canonical": "oklch(96.6% 0.004 106)",
+        "tonalRamp": [
+          "#0b0b09",
+          "#242422",
+          "#424240",
+          "#636361",
+          "#868684",
+          "#ababa8",
+          "#cececb",
+          "#efefec"
+        ]
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Screen Well",
+        "canonical": "oklch(89.3% 0.007 107)",
+        "tonalRamp": [
+          "#0b0b08",
+          "#242421",
+          "#43433f",
+          "#63635f",
+          "#868682",
+          "#ababa6",
+          "#cecec9",
+          "#efefea"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(84.0% 0.008 107)",
+        "tonalRamp": [
+          "#0b0b08",
+          "#242420",
+          "#43433e",
+          "#64645e",
+          "#868681",
+          "#ababa5",
+          "#cecec8",
+          "#efefe9"
+        ]
+      },
+      "drawing-soft": {
+        "role": "neutral",
+        "displayName": "Drawing Soft",
+        "canonical": "oklch(69.0% 0.007 277)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#232428",
+          "#414246",
+          "#626367",
+          "#85868b",
+          "#a9aaaf",
+          "#cccdd3",
+          "#edeef3"
+        ]
+      },
+      "mid": {
+        "role": "neutral",
+        "displayName": "Mid Graphite",
+        "canonical": "oklch(48.3% 0.010 278)",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#232429",
+          "#414248",
+          "#626369",
+          "#85868c",
+          "#a9aab1",
+          "#cccdd4",
+          "#edeef5"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "oklch(41.3% 0.007 275)",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#232427",
+          "#414246",
+          "#626367",
+          "#85868a",
+          "#a9aaaf",
+          "#cccdd2",
+          "#edeef3"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Graphite Ink",
+        "canonical": "oklch(29.3% 0.004 265)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#232426",
+          "#414244",
+          "#626365",
+          "#858688",
+          "#a9abad",
+          "#ccced0",
+          "#edeef1"
+        ]
+      },
+      "green": {
+        "role": "primary",
+        "displayName": "Indicator Green",
+        "canonical": "oklch(51.8% 0.115 149)",
+        "tonalRamp": [
+          "#001003",
+          "#012d0e",
+          "#065120",
+          "#29753c",
+          "#4f995e",
+          "#75bf82",
+          "#97e3a4",
+          "#cafed1"
+        ]
+      },
+      "red": {
+        "role": "secondary",
+        "displayName": "Signal Red",
+        "canonical": "oklch(51.5% 0.159 34)",
+        "tonalRamp": [
+          "#1d0200",
+          "#460b01",
+          "#7b1800",
+          "#ab341a",
+          "#d45b40",
+          "#ff8165",
+          "#febbab",
+          "#ffe9e4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The single page title under Fig. 1."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles, led by a 30px lettered disc."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Sub-section and keyed-paragraph heads."
+      },
+      "lead": {
+        "displayName": "Lead",
+        "purpose": "One sentence under the page title, Soft Ink, 60ch."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text, 68ch, tabular numerals."
+      },
+      "note": {
+        "displayName": "Note",
+        "purpose": "Asides in Mid Graphite."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase mono figure captions, CONTENTS heading, table headers."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Code blocks; inline code at 0.86em."
+      },
+      "disc-numeral": {
+        "displayName": "Disc Numeral",
+        "purpose": "Letters and digits inside discs and step markers."
+      }
+    },
+    "shadows": [],
+    "surfaceEffects": [
+      {
+        "name": "header-glass",
+        "value": "background: color-mix(in srgb, #e7e7e3 92%, transparent); backdrop-filter: saturate(1.2) blur(8px)",
+        "purpose": "Sticky header only; the one layered surface."
+      },
+      {
+        "name": "focus-ring",
+        "value": "outline: 2px solid #2f7a41; outline-offset: 3px; border-radius: 3px",
+        "purpose": "Every focusable element."
+      },
+      {
+        "name": "drawing-stroke",
+        "value": "stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; secondary paths dashed 4 5",
+        "purpose": "All figure line work."
+      }
+    ],
+    "motion": [
+      {
+        "name": "commit-travel",
+        "value": "3.4s cubic-bezier(.33, 0, .2, 1) 0.5s, offset-path along the flow",
+        "purpose": "Fig. 1 plays once when half in view: the green commit travels to the repository."
+      },
+      {
+        "name": "commit-travel-refused",
+        "value": "3.4s cubic-bezier(.33, 0, .2, 1) 0.5s, path ends at the gate",
+        "purpose": "Fig. 2: the commit stops at the reviewer."
+      },
+      {
+        "name": "lamp-settle",
+        "value": "0.6s ease-out, 2.3s delay (go) / 2.6s delay (stop), opacity .25 to 1",
+        "purpose": "The lamp lights after the commit reaches the gate."
+      },
+      {
+        "name": "return-appear",
+        "value": "0.8s ease-out 2.8s, opacity 0 to 1",
+        "purpose": "The refused return path appears after the stop lamp."
+      },
+      {
+        "name": "disc-state",
+        "value": "background .25s, color .25s",
+        "purpose": "Contents disc fills for the section in view."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce disables smooth scroll and all figure animation",
+        "purpose": "Figures render at rest, lamps already lit."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "900px",
+        "purpose": "Contents fold into a drawer; tables stack; the figure scrolls sideways at min-width 860px under a 'Scroll the figure →' cue."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Numbered Disc",
+      "kind": "custom",
+      "refersTo": "disc",
+      "description": "The only ornament: letters key sections, digits key parts of the mechanism; fill, go and stop variants.",
+      "html": "<span class=\"ds-row\"><span class=\"ds-disc\">A</span><span class=\"ds-disc ds-fill\">1</span><span class=\"ds-disc ds-go\">6</span><span class=\"ds-disc ds-stop\">6</span><span class=\"ds-disc ds-section\">B</span></span>",
+      "css": ".ds-row{display:flex;gap:10px;align-items:center;} .ds-disc{display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;border:1.5px solid var(--ink, #2b2c2e);color:var(--ink, #2b2c2e);font:600 11px/1 \"Geist Mono\", ui-monospace, monospace;transition:background .25s,color .25s;} .ds-fill{background:var(--ink, #2b2c2e);color:var(--paper, #f4f4f1);} .ds-go{background:var(--green, #2f7a41);border-color:var(--green, #2f7a41);color:#fff;} .ds-stop{background:var(--red, #b0391f);border-color:var(--red, #b0391f);color:#fff;} .ds-section{width:30px;height:30px;font-size:14px;border-width:2px;}"
+    },
+    {
+      "name": "Keyed Paragraph",
+      "kind": "custom",
+      "refersTo": "disc-fill",
+      "description": "A paragraph headed by the disc that matches its callout on the figure.",
+      "html": "<div class=\"ds-key\"><h4><span class=\"ds-kd\">4</span>The gate checks the hashes</h4><p><code>kaldor gate</code> finds the commit in the command line and hashes the staged diff.</p></div>",
+      "css": ".ds-key{font-family:\"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);max-width:320px;} .ds-key h4{display:flex;gap:10px;align-items:flex-start;font-size:18px;font-weight:600;line-height:1.3;margin:0 0 8px;} .ds-kd{flex:none;margin-top:1px;display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;border:1.5px solid var(--ink, #2b2c2e);color:var(--ink, #2b2c2e);font:600 11px/1 \"Geist Mono\", ui-monospace, monospace;transition:background .25s,color .25s;background:var(--ink, #2b2c2e);color:var(--paper, #f4f4f1);} .ds-key p{font-size:15.5px;line-height:1.65;margin:0;} .ds-key code{font-family:\"Geist Mono\", ui-monospace, monospace;font-size:.86em;background:var(--well, #dcdcd7);padding:1px 5px;border-radius:3px;}"
+    },
+    {
+      "name": "Procedure Steps",
+      "kind": "custom",
+      "refersTo": "step-marker",
+      "description": "Numbered steps in a strict 40px margin column, separated by hairlines.",
+      "html": "<ol class=\"ds-steps\"><li><p><strong>Once per repository</strong>, enable Kaldor.</p></li><li><p><strong>Commit the rules yourself.</strong></p></li></ol>",
+      "css": ".ds-steps{list-style:none;padding:0;margin:0;counter-reset:s;font:400 16.5px/1.65 \"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);} .ds-steps>li{counter-increment:s;display:grid;grid-template-columns:40px 1fr;padding:14px 0;border-top:1px solid var(--line, #cbcbc5);} .ds-steps>li::before{content:counter(s);width:23px;height:23px;border-radius:50%;background:var(--ink, #2b2c2e);color:var(--paper, #f4f4f1);display:grid;place-items:center;font:600 11.5px/1 \"Geist Mono\", ui-monospace, monospace;margin-top:2px;} .ds-steps p{margin:0;grid-column:2;}"
+    },
+    {
+      "name": "Code Block",
+      "kind": "card",
+      "refersTo": "code-block",
+      "description": "Code on paper with a hairline, never a dark slab; comments in Mid Graphite.",
+      "html": "<pre class=\"ds-pre\">dnx Atypical.Kaldor init   <span class=\"ds-c\"># once per repository</span></pre>",
+      "css": ".ds-pre{margin:0;padding:14px 18px;overflow-x:auto;background:var(--paper, #f4f4f1);border:1px solid var(--line, #cbcbc5);border-radius:4px;font:400 13.5px/1.6 \"Geist Mono\", ui-monospace, monospace;color:var(--ink, #2b2c2e);} .ds-c{color:var(--mid, #5d5e64);}"
+    },
+    {
+      "name": "Figure Panel",
+      "kind": "card",
+      "refersTo": "figure-panel",
+      "description": "Paper panel holding a 1.5px line drawing with numbered callouts and a mono caption; the refused state relights the same drawing.",
+      "html": "<figure class=\"ds-fig\"><svg viewBox=\"0 0 320 110\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"><rect x=\"10\" y=\"30\" width=\"110\" height=\"60\" rx=\"10\"/><path d=\"M120 60 H190\"/><rect x=\"190\" y=\"30\" width=\"120\" height=\"60\" rx=\"10\"/><circle cx=\"270\" cy=\"76\" r=\"7\" fill=\"#2f7a41\" stroke=\"none\"/><circle cx=\"292\" cy=\"76\" r=\"7\" stroke=\"#9a9ba0\"/><circle cx=\"250\" cy=\"16\" r=\"12\" fill=\"#2b2c2e\" stroke=\"none\"/><text x=\"246\" y=\"20\" fill=\"#f4f4f1\" stroke=\"none\" font-size=\"11.5\" font-family=\"Geist Mono, monospace\" font-weight=\"600\">4</text><text x=\"22\" y=\"64\" fill=\"#2b2c2e\" stroke=\"none\" font-size=\"13\" font-family=\"Hanken Grotesk, sans-serif\">Claude Code</text><text x=\"202\" y=\"56\" fill=\"#2b2c2e\" stroke=\"none\" font-size=\"12\" font-family=\"Geist Mono, monospace\">kaldor gate</text></svg><figcaption>Fig. 1 — One commit, from intent to repository</figcaption></figure>",
+      "css": ".ds-fig{margin:0;background:var(--paper, #f4f4f1);border:1px solid var(--line, #cbcbc5);border-radius:4px;padding:10px 10px 14px;color:var(--ink, #2b2c2e);} .ds-fig svg{display:block;width:100%;height:auto;} .ds-fig figcaption{font:500 12px/1.4 \"Geist Mono\", ui-monospace, monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--mid, #5d5e64);padding:6px 12px 0;}"
+    },
+    {
+      "name": "Reference Table",
+      "kind": "custom",
+      "refersTo": "ref-table-header",
+      "description": "Label-grid table: mono caps header over a graphite rule, hairline rows, who-runs-it rings.",
+      "html": "<table class=\"ds-ref\"><thead><tr><th>Command</th><th>Who runs it</th></tr></thead><tbody><tr><td><code>kaldor report</code></td><td><span class=\"ds-who ds-human\">You</span></td></tr><tr><td><code>kaldor intent freeze</code></td><td><span class=\"ds-who\">The agent</span></td></tr><tr><td><code>kaldor gate</code></td><td><span class=\"ds-who ds-hook\">The hook</span></td></tr></tbody></table>",
+      "css": ".ds-ref{border-collapse:collapse;width:100%;font:400 15px/1.5 \"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);} .ds-ref th{text-align:left;font:500 12px/1 \"Geist Mono\", ui-monospace, monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--mid, #5d5e64);padding:0 16px 10px 0;border-bottom:1.5px solid var(--ink, #2b2c2e);} .ds-ref td{padding:12px 16px 12px 0;border-bottom:1px solid var(--line, #cbcbc5);} .ds-ref code{font:500 14px \"Geist Mono\", ui-monospace, monospace;white-space:nowrap;} .ds-who{display:inline-flex;align-items:center;gap:7px;color:var(--ink-2, #4a4b4f);} .ds-who::before{content:'';width:8px;height:8px;border-radius:50%;border:1.5px solid var(--ink, #2b2c2e);} .ds-human::before{background:var(--ink, #2b2c2e);} .ds-hook::before{border-style:dotted;}"
+    },
+    {
+      "name": "Header",
+      "kind": "nav",
+      "refersTo": "header",
+      "description": "Slim sticky header: wordmark with green indicator dot, edition line, plain links.",
+      "html": "<header class=\"ds-top\"><a class=\"ds-wordmark\" href=\"#\">Kaldor<i></i></a><span class=\"ds-edition\">Instructions for use · 1.0</span><nav><a href=\"#\">Install</a><a href=\"#\">Commands</a><a href=\"#\">GitHub</a></nav></header>",
+      "css": ".ds-top{display:flex;align-items:center;gap:28px;height:64px;padding:0 24px;background:color-mix(in srgb,var(--ground, #e7e7e3) 92%,transparent);backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--line, #cbcbc5);font-family:\"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);} .ds-wordmark{font-weight:700;font-size:19px;letter-spacing:.01em;text-decoration:none;color:inherit;display:flex;align-items:center;gap:8px;} .ds-wordmark i{width:9px;height:9px;border-radius:50%;background:var(--green, #2f7a41);} .ds-edition{color:var(--mid, #5d5e64);font-size:14px;} .ds-top nav{margin-left:auto;display:flex;gap:26px;font-size:14.5px;} .ds-top nav a{color:inherit;text-decoration:none;text-underline-offset:3px;} .ds-top nav a:hover{text-decoration:underline;} .ds-top a:focus-visible{outline:2px solid var(--green, #2f7a41);outline-offset:3px;border-radius:3px;}"
+    },
+    {
+      "name": "Contents Index",
+      "kind": "nav",
+      "refersTo": "disc",
+      "description": "Lettered contents; the section in view fills its disc.",
+      "html": "<nav class=\"ds-index\"><h2>CONTENTS</h2><ol><li><a href=\"#\"><span class=\"ds-d\">A</span>How it works</a></li><li><a href=\"#\" aria-current=\"true\"><span class=\"ds-d\">B</span>Install</a></li><li><a href=\"#\"><span class=\"ds-d\">C</span>Day to day</a></li></ol></nav>",
+      "css": ".ds-index{font:400 14.5px/1.65 \"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);} .ds-index h2{font:500 12px/1 \"Geist Mono\", ui-monospace, monospace;letter-spacing:.12em;color:var(--mid, #5d5e64);margin:0 0 16px;} .ds-index ol{list-style:none;margin:0;padding:0;} .ds-index a{display:flex;gap:12px;align-items:center;padding:6px 0;color:inherit;text-decoration:none;} .ds-index a:hover{text-decoration:underline;} .ds-index a:focus-visible{outline:2px solid var(--green, #2f7a41);outline-offset:3px;border-radius:3px;} .ds-index a[aria-current=true]{font-weight:600;} .ds-d{flex:none;display:inline-grid;place-items:center;width:21px;height:21px;border-radius:50%;border:1.5px solid var(--ink, #2b2c2e);color:var(--ink, #2b2c2e);font:600 11px/1 \"Geist Mono\", ui-monospace, monospace;transition:background .25s,color .25s;} .ds-index a[aria-current=true] .ds-d{background:var(--ink, #2b2c2e);color:var(--paper, #f4f4f1);}"
+    },
+    {
+      "name": "Inline Link",
+      "kind": "custom",
+      "refersTo": "",
+      "description": "Graphite underlined link; hover thickens the underline, focus draws the green ring.",
+      "html": "<p class=\"ds-p\">You need the <a href=\"#\">.NET 10 SDK</a> and git.</p>",
+      "css": ".ds-p{font:400 16.5px/1.65 \"Hanken Grotesk\", system-ui, sans-serif;color:var(--ink, #2b2c2e);} .ds-p a{color:inherit;text-underline-offset:3px;text-decoration-thickness:1px;} .ds-p a:hover{text-decoration-thickness:2px;} .ds-p a:focus-visible{outline:2px solid var(--green, #2f7a41);outline-offset:3px;border-radius:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Instruction Leaflet",
+    "overview": "Kaldor is documented the way a well-made appliance is documented: one exact line drawing of its parts, and every paragraph keyed to a numbered disc on that drawing. The page is an enamel-grey leaflet with lighter paper panels, graphite ink and thin 1.5px line drawings. Nothing is decorated; the numbered disc is the only ornament, and colour appears only where a lamp would light on the real machine.\n\nThe reading model is reference first. A slim header, a sticky lettered contents column, one figure at a fixed scale, then keyed paragraphs, numbered procedures and label-grid reference tables. The same drawing returns for the refused state, stopped at the gate, rather than a new illustration. The system deliberately refuses the documentation-site default of sidebar tree, blue-accent cards and dark code slabs.",
+    "keyCharacteristics": [
+      "Neutral enamel grey ground (kept clear of cream), lighter paper panels for anything you read closely or copy.",
+      "Graphite ink everywhere; green and red appear only as indicators.",
+      "Numbered discs key text to the drawing; letters key sections, digits key parts of the mechanism.",
+      "One line drawing, drawn once, recoloured by state.",
+      "Flat: hairline borders, no shadows.",
+      "Works without JavaScript; the script only marks the current section and plays the figure once."
+    ],
+    "rules": [
+      {
+        "name": "The Lamp Rule",
+        "body": "Green means \"this part is live or passed\". It lights discs, lamps, the commit in transit and the focus ring; it never colours links, headings, panels or backgrounds.",
+        "section": "colors"
+      },
+      {
+        "name": "The Reserved Red Rule",
+        "body": "Red appears only when something is refused. A page with no refusal on it carries no red.",
+        "section": "colors"
+      },
+      {
+        "name": "The Enamel Ground Rule",
+        "body": "The ground is the confirmed neutral enamel grey. Warmer, creamier or paper-white grounds are a different world.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Voices Rule",
+        "body": "If a reader would type it, path it or cite it as a figure, it is Geist Mono; if they would read it, it is Hanken Grotesk. No third face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Weight Ceiling Rule",
+        "body": "Headings sit at 600; 700 belongs to the wordmark alone.",
+        "section": "typography"
+      },
+      {
+        "name": "The Fixed Scale Rule",
+        "body": "Every figure is the same 1120×486 drawing at the same scale. Variation comes from which parts are lit, never from re-composition.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Leaflet Rule",
+        "body": "If a surface needs to stand apart, give it paper and a hairline. Never a shadow.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** key every explanatory paragraph to a numbered disc that also appears on the drawing.",
+      "**Do** reuse the one figure at its fixed scale and change only what is lit to tell a different state.",
+      "**Do** keep green for lamps, lit discs, the commit in transit and focus; keep red for refusal only.",
+      "**Do** put anything copied or read closely (code, figures, the mobile contents) on paper with a hairline and 4px corners.",
+      "**Do** set code, paths, figure captions and table labels in Geist Mono; everything else in Hanken Grotesk.",
+      "**Do** let the figure scroll sideways on narrow screens, with the \"Scroll the figure →\" cue, rather than shrinking it.",
+      "**Do** keep every page readable without JavaScript and without motion."
+    ],
+    "donts": [
+      "**Don't** add shadows, gradients or coloured card backgrounds; depth is tone and hairline.",
+      "**Don't** introduce a second accent, a blue link colour, or green on links and headings.",
+      "**Don't** set code on dark slabs.",
+      "**Don't** warm the ground toward cream or replace it with white.",
+      "**Don't** draw a new illustration for a state the flow drawing can already show.",
+      "**Don't** add icons or ornaments outside the circle family (numbered discs, lamps, who-runs-it rings, the indicator dot).",
+      "**Don't** animate anything beyond the single commit-through-the-gate moment."
+    ]
+  }
+}

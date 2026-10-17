@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaldor · Instructions for use</title>
+<meta name="description" content="Kaldor is an intent/code review guard for Claude Code: no agent commit enters the repository without being checked against a declared intent, by a reviewer the agent does not control.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <a class="wordmark" href="#how">Kaldor<i aria-hidden="true"></i></a>
+  <span class="edition">Instructions for use · 1.0</span>
+  <nav aria-label="Site">
+    <a href="#install">Install</a>
+    <a href="#commands">Commands</a>
+    <a class="opt" href="https://www.nuget.org/packages/Atypical.Kaldor">NuGet</a>
+    <a href="https://github.com/Atypical-Consulting/kaldor">GitHub</a>
+  </nav>
+</header>
+
+<div class="layout">
+  <aside class="index" aria-label="Contents">
+    <h2>CONTENTS</h2>
+    <ol><li><a href="#how"><span class="disc">A</span>How it works</a></li><li><a href="#install"><span class="disc">B</span>Install</a></li><li><a href="#daily"><span class="disc">C</span>Day to day</a></li><li><a href="#commands"><span class="disc">D</span>Commands</a></li><li><a href="#rules"><span class="disc">E</span>Rules</a></li><li><a href="#guards"><span class="disc">F</span>What it guards against</a></li><li><a href="#costs"><span class="disc">G</span>Costs and limits</a></li></ol>
+  </aside>
+
+  <main>
+    <details class="contents-mobile"><summary>CONTENTS</summary><ol><li><a href="#how"><span class="disc">A</span>How it works</a></li><li><a href="#install"><span class="disc">B</span>Install</a></li><li><a href="#daily"><span class="disc">C</span>Day to day</a></li><li><a href="#commands"><span class="disc">D</span>Commands</a></li><li><a href="#rules"><span class="disc">E</span>Rules</a></li><li><a href="#guards"><span class="disc">F</span>What it guards against</a></li><li><a href="#costs"><span class="disc">G</span>Costs and limits</a></li></ol></details>
+
+    <section id="how" aria-labelledby="how-h">
+      <figure class="fig">
+        <p class="scroll-cue" aria-hidden="true">Scroll the figure →</p>
+        <svg class="flow " viewBox="0 0 1120 486" role="img" aria-labelledby="f1-t" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <title id="f1-t">Claude Code runs git commit. The PreToolUse hook, which runs on every Bash and edit call, calls kaldor gate. The gate checks the frozen intent, hashes the staged diff, reads intent and rules from .kaldor/, sends intent, rules and diff to an independent claude -p reviewer and records the verdict. A refusal exits 2 and sends the reason back to Claude; a pass exits 0 and the command runs. The git pre-commit hook then runs the same check with kaldor check, reviewing a diff staged late; its refusal exits 1 and aborts the commit. Otherwise the commit reaches the repository.</title>
+  <defs>
+    <marker id="f1-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke" stroke="none"/></marker>
+  </defs>
+
+  <!-- refused path: exit 2, deviations back to Claude -->
+  <g class="return">
+    <path d="M580 104 C580 30 124 30 124 92" stroke-dasharray="4 5" marker-end="url(#f1-a)"/>
+    <text x="236" y="86" class="mono">exit 2 · the reason, back to Claude</text>
+  </g>
+
+  <!-- Claude Code -->
+  <rect x="24" y="96" width="200" height="124" rx="10"/>
+  <rect x="40" y="112" width="168" height="64" rx="4" class="screen"/>
+  <path class="soft" d="M54 132h88M54 146h118M54 160h64"/>
+  <text x="40" y="204">Claude Code</text>
+
+  <!-- git commit -->
+  <path d="M224 158 H308" marker-end="url(#f1-a)"/>
+  <text x="232" y="146" class="mono">git commit</text>
+
+  <!-- PreToolUse hook -->
+  <rect x="312" y="124" width="168" height="68" rx="34"/>
+  <text x="338" y="155">PreToolUse hook</text>
+  <text x="338" y="174" class="mono dim">onFailure: block</text>
+  <text x="318" y="114" class="cap dim">on every Bash and edit call</text>
+
+  <!-- kaldor gate -->
+  <path d="M480 158 H540" marker-end="url(#f1-a)"/>
+  <text x="496" y="146" class="mono dim">dnx</text>
+  <rect x="544" y="104" width="180" height="108" rx="10"/>
+  <text x="560" y="132" class="mono">kaldor gate</text>
+  <text x="560" y="154" class="cap dim">finds the commit</text>
+  <text x="560" y="171" class="cap dim">hashes intent + staged diff</text>
+  <circle cx="668" cy="194" r="8" class="lamp-go"/>
+  <circle cx="700" cy="194" r="8" class="lamp-stop"/>
+
+  <!-- reviewer -->
+  <path d="M724 138 H850" marker-end="url(#f1-a)"/>
+  <path d="M850 182 H724" marker-end="url(#f1-a)"/>
+  <text x="736" y="128" class="cap">intent, rules, diff</text>
+  <text x="736" y="200" class="cap">JSON verdict</text>
+  <rect x="854" y="96" width="242" height="124" rx="10"/>
+  <rect x="870" y="112" width="210" height="58" rx="4" class="screen"/>
+  <text x="884" y="137" class="mono">claude -p --safe-mode</text>
+  <text x="884" y="157" class="mono dim">--tools "" · fixed prompt</text>
+  <text x="870" y="204">Independent reviewer</text>
+
+  <!-- .kaldor/ -->
+  <path class="soft" d="M124 220 V284" stroke-dasharray="4 5" marker-end="url(#f1-a)"/>
+  <text x="134" y="258" class="cap dim">writes; you approve; freeze</text>
+  <rect x="24" y="288" width="420" height="152" rx="6"/>
+  <text x="40" y="314" class="mono">.kaldor/</text>
+  <path class="soft" d="M40 326 H428"/>
+  <text x="40" y="348" class="mono">intent.md</text><text x="160" y="348" class="cap dim">the task, frozen by hash</text>
+  <text x="40" y="371" class="mono">rules.json</text><text x="160" y="371" class="cap dim">sensitive paths, model, block_on</text>
+  <text x="40" y="394" class="mono">state.json</text><text x="160" y="394" class="cap dim">frozen intent hash · passes per diff</text>
+  <text x="40" y="417" class="mono">log/</text><text x="160" y="417" class="cap dim">every review, freeze and approval</text>
+  <path class="soft" d="M444 352 C548 352 580 300 580 216" stroke-dasharray="4 5" marker-start="url(#f1-a)" marker-end="url(#f1-a)"/>
+  <text x="470" y="380" class="cap dim">reads intent + rules,</text>
+  <text x="470" y="397" class="cap dim">records verdicts</text>
+
+  <!-- allowed path to the repository -->
+  <g class="to-repo">
+    <path d="M668 212 V378 H760" marker-end="url(#f1-a)"/>
+    <text x="680" y="296" class="mono">exit 0</text>
+    <text x="680" y="314" class="cap dim">the command runs</text>
+  </g>
+  <g class="repo">
+    <rect x="764" y="346" width="190" height="64" rx="32"/>
+    <text x="790" y="374">git pre-commit</text>
+    <text x="790" y="393" class="mono dim">kaldor check</text>
+    <path class="soft" d="M914 346 C914 290 1000 280 1000 224" stroke-dasharray="4 5" marker-end="url(#f1-a)"/>
+    <text x="1012" y="268" class="cap dim">same check,</text>
+    <text x="1012" y="285" class="cap dim">reviews a diff</text>
+    <text x="1012" y="302" class="cap dim">staged late</text>
+    <text x="880" y="446" class="cap dim">refusal: exit 1, commit aborted</text>
+    <path d="M954 378 H1000" marker-end="url(#f1-a)"/>
+    <path d="M1006 378 H1096"/>
+    <circle cx="1016" cy="378" r="7" class="commit"/><circle cx="1050" cy="378" r="7" class="commit"/><circle cx="1084" cy="378" r="7" class="commit new"/>
+    <text x="1012" y="410" class="cap">repository</text>
+  </g>
+
+  <circle r="6" class="packet"/>
+
+  <!-- numbered callouts, in the order things happen -->
+  <g class="callout"><path class="soft" d="M444 300 H456"/><circle cx="468" cy="300" r="12"/><text x="464" y="304">1</text></g>
+  <g class="callout"><circle cx="266" cy="184" r="12"/><text x="262" y="188">2</text></g>
+  <g class="callout"><path class="soft" d="M396 192 V220"/><circle cx="396" cy="232" r="12"/><text x="392" y="236">3</text></g>
+  <g class="callout"><path class="soft" d="M712 104 V80"/><circle cx="712" cy="68" r="12"/><text x="708" y="72">4</text></g>
+  <g class="callout"><path class="soft" d="M975 96 V72"/><circle cx="975" cy="60" r="12"/><text x="971" y="64">5</text></g>
+  <g class="callout go"><path class="soft" d="M700 202 V232 H728"/><circle cx="740" cy="232" r="12"/><text x="736" y="236">6</text></g>
+  <g class="callout"><path class="soft" d="M859 410 V430"/><circle cx="859" cy="442" r="12"/><text x="855" y="446">7</text></g>
+</svg>
+
+        <figcaption>Fig. 1 — One commit, from intent to repository</figcaption>
+      </figure>
+      <h1 id="how-h">How Kaldor works</h1>
+      <p class="lead">No commit made by Claude Code enters your repository without being checked against an intent you approved, by a reviewer the agent does not control.</p>
+      <div class="keys">
+        <div><h2><span class="disc fill">1</span>The intent comes first</h2><p>Before its first edit, Claude writes <code>.kaldor/intent.md</code>: goal, expected behavior, what must not be touched, expected files. You approve it, and <code>kaldor intent freeze</code> records its hash.</p></div>
+        <div><h2><span class="disc fill">2</span>Claude commits as usual</h2><p>A plain <code>git commit</code> from the Bash or PowerShell tool. Nothing changes in how Claude works.</p></div>
+        <div><h2><span class="disc fill">3</span>The hook stops the call</h2><p>Claude Code runs Kaldor's <code>PreToolUse</code> hook before every Bash and edit call. It fails closed: a hook that crashes, times out or gets no verdict from the reviewer blocks. The same hook refuses edits until an intent is frozen.</p></div>
+        <div><h2><span class="disc fill">4</span>The gate checks the hashes</h2><p><code>kaldor gate</code> finds the commit in the command line, even through <code>git -C</code>, <code>cd</code>, <code>bash -c</code> or an alias, and refuses hook-skipping flags at once. It checks that the intent still matches its frozen hash, hashes the staged diff, and reuses an earlier verdict for the same diff and intent.</p></div>
+        <div><h2><span class="disc fill">5</span>Someone else reviews</h2><p>The gate launches a headless <code>claude -p</code> with a fixed prompt, no tools and no CLAUDE.md, and hands it the intent, the rules and the diff. The agent never writes a word of that prompt.</p></div>
+        <div><h2><span class="disc go">6</span>The gate records the verdict</h2><p>Accepted: a pass is stored in <code>state.json</code> for that exact diff and intent, and the command runs. Refused: exit 2, and Claude receives the deviations to fix. Every review is logged in <code>.kaldor/log/</code>.</p></div>
+        <div><h2><span class="disc fill">7</span>A second lock at git</h2><p>The git <code>pre-commit</code> hook runs <code>kaldor check</code>, the same evaluation, on the index git is about to commit. When the gate already passed that diff, it costs nothing. When it did not (a commit from a script, or files staged in the same command, as in <code>git add -A &amp;&amp; git commit</code>), it calls the reviewer itself, and a refusal aborts the commit. Only commits made inside Claude Code are checked; yours are not.</p></div>
+      </div>
+    </section>
+
+    <section id="install" aria-labelledby="install-h">
+      <h2 id="install-h"><span class="disc">B</span>Install</h2>
+      <p>You need the <a href="https://dotnet.microsoft.com/download">.NET 10 SDK</a> (for <code>dnx</code>), Claude Code 2.1.295 or later, and git. The .NET tool is never installed: the hooks run it through <code>dnx</code>, which fetches the version the plugin pins on first use.</p>
+      <ol class="steps">
+        <li><p><strong>Once per machine</strong>, in Claude Code, install the plugin. It brings the hooks, the intent skill and a <code>kaldor</code> command for the agent.</p>
+<pre>/plugin install kaldor --marketplace Atypical-Consulting/kaldor</pre></li>
+        <li><p><strong>Once per repository</strong>, from your terminal, enable Kaldor. This creates <code>.kaldor/rules.json</code> and the git <code>pre-commit</code> hook (if one already exists, it prints the line to add to it). Kaldor stays silent in repositories without <code>.kaldor/rules.json</code>.</p>
+<pre>dnx Atypical.Kaldor init</pre></li>
+        <li><p><strong>Commit the rules yourself</strong>, from a regular terminal. The rules are your decision, so a commit of them by the agent is reviewed like any other.</p>
+<pre>git add .kaldor
+git commit -m "chore: enable Kaldor"</pre></li>
+        <li><p><strong>Check the installation</strong> at any time.</p>
+<pre>dnx Atypical.Kaldor doctor</pre></li>
+      </ol>
+      <p class="note">Prefer typing <code>kaldor</code>? <code>dotnet tool install -g Atypical.Kaldor</code>. The rest of this page uses that short form.</p>
+    </section>
+
+    <section id="daily" aria-labelledby="daily-h">
+      <h2 id="daily-h"><span class="disc">C</span>Day to day</h2>
+      <p>Work with Claude Code as usual. Kaldor steps in twice per task.</p>
+      <ol class="steps">
+        <li><p><strong>Start from a clean work tree.</strong> Claude writes the intent and shows it to you. Edits are refused until it is frozen.</p>
+<pre># Intent
+Goal: add pagination to the GET /orders endpoint
+Expected behavior: page and size parameters, 50 by default
+Must not touch: the database schema, authentication
+Expected files: OrdersController.cs, OrdersQuery.cs, related tests</pre></li>
+        <li><p><strong>Approve or correct it.</strong> Claude then runs <code>kaldor intent freeze</code>.</p></li>
+        <li><p><strong>Each commit is reviewed</strong>, in a few seconds. An accepted commit goes through; a refused one comes back to Claude.</p></li>
+        <li><p><strong>Read the report</strong> when you want: intents, deviations, and the hunks worth your attention.</p>
+<pre class="report">$ kaldor report
+2026-10-17 23:30  review          <span class="bad">BLOCKED</span>
+  deviation  README.md: modified despite the intent saying it must not be touched.
+  deviation  greet.py: adds a network call to http://example.com/track that sends the user's name.
+  to read    greet.py (logic)
+  summary    The diff adds an undeclared tracking request in greet.py and edits README.md, which the intent forbids.</pre></li>
+      </ol>
+
+      <h3>When a commit is refused</h3>
+      <figure class="fig">
+        <p class="scroll-cue" aria-hidden="true">Scroll the figure →</p>
+        <svg class="flow refused" viewBox="0 0 1120 486" role="img" aria-labelledby="f2-t" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <title id="f2-t">The same flow, refused: the reviewer finds deviations, the gate exits 2 and sends them back to Claude; the commit never reaches git.</title>
+  <defs>
+    <marker id="f2-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke" stroke="none"/></marker>
+  </defs>
+
+  <!-- refused path: exit 2, deviations back to Claude -->
+  <g class="return">
+    <path d="M580 104 C580 30 124 30 124 92" stroke-dasharray="4 5" marker-end="url(#f2-a)"/>
+    <text x="236" y="86" class="mono">exit 2 · deviations back to Claude</text>
+  </g>
+
+  <!-- Claude Code -->
+  <rect x="24" y="96" width="200" height="124" rx="10"/>
+  <rect x="40" y="112" width="168" height="64" rx="4" class="screen"/>
+  <path class="soft" d="M54 132h88M54 146h118M54 160h64"/>
+  <text x="40" y="204">Claude Code</text>
+
+  <!-- git commit -->
+  <path d="M224 158 H308" marker-end="url(#f2-a)"/>
+  <text x="232" y="146" class="mono">git commit</text>
+
+  <!-- PreToolUse hook -->
+  <rect x="312" y="124" width="168" height="68" rx="34"/>
+  <text x="338" y="155">PreToolUse hook</text>
+  <text x="338" y="174" class="mono dim">onFailure: block</text>
+  <text x="318" y="114" class="cap dim">on every Bash and edit call</text>
+
+  <!-- kaldor gate -->
+  <path d="M480 158 H540" marker-end="url(#f2-a)"/>
+  <text x="496" y="146" class="mono dim">dnx</text>
+  <rect x="544" y="104" width="180" height="108" rx="10"/>
+  <text x="560" y="132" class="mono">kaldor gate</text>
+  <text x="560" y="154" class="cap dim">finds the commit</text>
+  <text x="560" y="171" class="cap dim">hashes intent + staged diff</text>
+  <circle cx="668" cy="194" r="8" class="lamp-go"/>
+  <circle cx="700" cy="194" r="8" class="lamp-stop"/>
+
+  <!-- reviewer -->
+  <path d="M724 138 H850" marker-end="url(#f2-a)"/>
+  <path d="M850 182 H724" marker-end="url(#f2-a)"/>
+  <text x="736" y="128" class="cap">intent, rules, diff</text>
+  <text x="736" y="200" class="cap">JSON verdict</text>
+  <rect x="854" y="96" width="242" height="124" rx="10"/>
+  <rect x="870" y="112" width="210" height="58" rx="4" class="screen"/>
+  <text x="884" y="137" class="mono">claude -p --safe-mode</text>
+  <text x="884" y="157" class="mono dim">--tools "" · fixed prompt</text>
+  <text x="870" y="204">Independent reviewer</text>
+
+  <!-- .kaldor/ -->
+  <path class="soft" d="M124 220 V284" stroke-dasharray="4 5" marker-end="url(#f2-a)"/>
+  <text x="134" y="258" class="cap dim">writes; you approve; freeze</text>
+  <rect x="24" y="288" width="420" height="152" rx="6"/>
+  <text x="40" y="314" class="mono">.kaldor/</text>
+  <path class="soft" d="M40 326 H428"/>
+  <text x="40" y="348" class="mono">intent.md</text><text x="160" y="348" class="cap dim">the task, frozen by hash</text>
+  <text x="40" y="371" class="mono">rules.json</text><text x="160" y="371" class="cap dim">sensitive paths, model, block_on</text>
+  <text x="40" y="394" class="mono">state.json</text><text x="160" y="394" class="cap dim">frozen intent hash · passes per diff</text>
+  <text x="40" y="417" class="mono">log/</text><text x="160" y="417" class="cap dim">every review, freeze and approval</text>
+  <path class="soft" d="M444 352 C548 352 580 300 580 216" stroke-dasharray="4 5" marker-start="url(#f2-a)" marker-end="url(#f2-a)"/>
+  <text x="470" y="380" class="cap dim">reads intent + rules,</text>
+  <text x="470" y="397" class="cap dim">records verdicts</text>
+
+  <!-- allowed path to the repository -->
+  <g class="to-repo">
+    <path d="M668 212 V378 H760" marker-end="url(#f2-a)"/>
+    <text x="680" y="296" class="mono">exit 0</text>
+    <text x="680" y="314" class="cap dim">the command runs</text>
+  </g>
+  <g class="repo">
+    <rect x="764" y="346" width="190" height="64" rx="32"/>
+    <text x="790" y="374">git pre-commit</text>
+    <text x="790" y="393" class="mono dim">kaldor check</text>
+    <path class="soft" d="M914 346 C914 290 1000 280 1000 224" stroke-dasharray="4 5" marker-end="url(#f2-a)"/>
+    <text x="1012" y="268" class="cap dim">same check,</text>
+    <text x="1012" y="285" class="cap dim">reviews a diff</text>
+    <text x="1012" y="302" class="cap dim">staged late</text>
+    <text x="880" y="446" class="cap dim">refusal: exit 1, commit aborted</text>
+    <path d="M954 378 H1000" marker-end="url(#f2-a)"/>
+    <path d="M1006 378 H1096"/>
+    <circle cx="1016" cy="378" r="7" class="commit"/><circle cx="1050" cy="378" r="7" class="commit"/><circle cx="1084" cy="378" r="7" class="commit new"/>
+    <text x="1012" y="410" class="cap">repository</text>
+  </g>
+
+  <circle r="6" class="packet"/>
+
+  <!-- numbered callouts, in the order things happen -->
+  <g class="callout"><path class="soft" d="M444 300 H456"/><circle cx="468" cy="300" r="12"/><text x="464" y="304">1</text></g>
+  <g class="callout"><circle cx="266" cy="184" r="12"/><text x="262" y="188">2</text></g>
+  <g class="callout"><path class="soft" d="M396 192 V220"/><circle cx="396" cy="232" r="12"/><text x="392" y="236">3</text></g>
+  <g class="callout"><path class="soft" d="M712 104 V80"/><circle cx="712" cy="68" r="12"/><text x="708" y="72">4</text></g>
+  <g class="callout"><path class="soft" d="M975 96 V72"/><circle cx="975" cy="60" r="12"/><text x="971" y="64">5</text></g>
+  <g class="callout go"><path class="soft" d="M700 202 V232 H728"/><circle cx="740" cy="232" r="12"/><text x="736" y="236">6</text></g>
+  <g class="callout"><path class="soft" d="M859 410 V430"/><circle cx="859" cy="442" r="12"/><text x="855" y="446">7</text></g>
+</svg>
+
+        <figcaption>Fig. 2 — A refused commit stops at the gate</figcaption>
+      </figure>
+      <p>The deviations go back to Claude, which fixes the code and commits again. The same diff against the same intent gets the same answer without a second review. A diff staged in the same command as the commit is refused one step later, by the <code>pre-commit</code> hook, which aborts the commit.</p>
+
+      <h3>When the intent itself must change</h3>
+      <p>Mid-task, the intent cannot be edited or frozen again. Claude proposes an amendment, and only you can accept it:</p>
+<pre>kaldor intent amend "Also add an index on orders.created_at."   <span class="c"># Claude</span>
+kaldor intent amend --accept                                     <span class="c"># you, in your terminal</span></pre>
+
+      <h3>When you disagree with the reviewer</h3>
+      <p>Force the exact staged diff through with <code>kaldor approve</code>, from your own terminal. Both <code>approve</code> and <code>amend --accept</code> are refused to the agent twice over: the gate denies the command, and the command itself needs an interactive terminal.</p>
+    </section>
+
+    <section id="commands" aria-labelledby="commands-h">
+      <h2 id="commands-h"><span class="disc">D</span>Commands</h2>
+      <table class="ref">
+        <thead><tr><th scope="col">Command</th><th scope="col">Who runs it</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>kaldor init</code></td><td><span class="who human">You, once</span></td><td>Creates <code>.kaldor/rules.json</code>, a <code>.kaldor/.gitignore</code>, and the git <code>pre-commit</code> hook, or prints the line to add to an existing one.</td></tr>
+          <tr><td><code>kaldor intent freeze</code></td><td><span class="who">The agent</span></td><td>Records the hash of <code>.kaldor/intent.md</code>. Refused mid-task if another intent is frozen.</td></tr>
+          <tr><td><code>kaldor intent amend "…"</code></td><td><span class="who">The agent</span></td><td>Proposes a change to the frozen intent. It has no effect until you accept it.</td></tr>
+          <tr><td><code>kaldor intent amend --accept</code></td><td><span class="who human">You only</span></td><td>Appends the dated amendment to the intent and freezes it again.</td></tr>
+          <tr><td><code>kaldor report [count]</code></td><td><span class="who human">You</span></td><td>The latest reviews at intent level (default 10).</td></tr>
+          <tr><td><code>kaldor review</code></td><td><span class="who human">You</span></td><td>Dry-run review of the staged diff. Nothing is recorded.</td></tr>
+          <tr><td><code>kaldor approve</code></td><td><span class="who human">You only</span></td><td>Forces the staged diff through without a passing review, with a trace in the history.</td></tr>
+          <tr><td><code>kaldor doctor</code></td><td><span class="who human">You</span></td><td>Checks git, Claude Code, the plugin, the rules and the <code>pre-commit</code> hook.</td></tr>
+          <tr><td><code>kaldor version</code></td><td><span class="who human">You</span></td><td>Prints the version. <code>dnx</code> keeps <code>--version</code> for itself.</td></tr>
+          <tr><td><code>kaldor gate</code></td><td><span class="who hook">The hook</span></td><td>The <code>PreToolUse</code> entry point. Reads the hook's JSON on stdin.</td></tr>
+          <tr><td><code>kaldor check</code></td><td><span class="who hook">git</span></td><td>The <code>pre-commit</code> entry point: the gate's evaluation on the index being committed. Acts only on commits made inside Claude Code.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="rules" aria-labelledby="rules-h">
+      <h2 id="rules-h"><span class="disc">E</span>Rules</h2>
+      <p><code>.kaldor/rules.json</code> is versioned with the repository. Comments and trailing commas are accepted.</p>
+<pre>{
+  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
+  "trivial": ["**/*.md"],
+  "reviewer_model": "sonnet",
+  "block_on": ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]
+}</pre>
+      <table class="ref">
+        <thead><tr><th scope="col">Key</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>sensitive</code></td><td>Paths whose changes the intent must announce. The reviewer is asked to flag them as must-read in the report.</td></tr>
+          <tr><td><code>trivial</code></td><td>Paths the reviewer may summarise as mechanical.</td></tr>
+          <tr><td><code>reviewer_model</code></td><td>The model the reviewer runs on.</td></tr>
+          <tr><td><code>block_on</code></td><td>The deviation categories the reviewer is told to block on: <code>scope_creep</code>, <code>sensitive_change</code>, <code>weakened_tests</code>, <code>contradicts_intent</code>.</td></tr>
+        </tbody>
+      </table>
+      <p>Everything else in <code>.kaldor/</code> is local and ignored by git: the intent, <code>state.json</code> and the <code>log/</code> history. Claude's edit tools are refused there, except on <code>intent.md</code> at the start of a task.</p>
+    </section>
+
+    <section id="guards" aria-labelledby="guards-h">
+      <h2 id="guards-h"><span class="disc">F</span>What it guards against</h2>
+      <p>The target is a hurried agent taking a shortcut, not a hostile one. On a local machine nothing is tamper-proof; the goal is for the honest path to be the shortest. Most shortcuts below are covered by a test in the repository.</p>
+      <table class="ref">
+        <thead><tr><th scope="col">Shortcut</th><th scope="col">Why it fails</th></tr></thead>
+        <tbody>
+          <tr><td>Framing the reviewer</td><td>The hook launches the reviewer with a fixed prompt; the agent never writes a word of it.</td></tr>
+          <tr><td>Writing its own verdict</td><td>The verdict is produced inside Kaldor's process, and Claude's edit tools are refused in <code>.kaldor/</code>.</td></tr>
+          <tr><td>Rewriting the intent</td><td>It is frozen by hash; a change goes through an amendment only you can accept.</td></tr>
+          <tr><td>Changing code after review</td><td>Verdicts are bound to the hash of the staged diff.</td></tr>
+          <tr><td><code>git -C</code>, <code>cd x &amp;&amp;</code>, <code>bash -c</code>, aliases</td><td>The gate parses the command line itself.</td></tr>
+          <tr><td>Committing from a script</td><td>The git <code>pre-commit</code> hook runs the same check for any commit made inside Claude Code.</td></tr>
+          <tr><td><code>--no-verify</code>, <code>core.hooksPath</code></td><td>Refused.</td></tr>
+          <tr><td>Breaking the hook</td><td><code>onFailure: "block"</code>: a failing or timed-out hook blocks.</td></tr>
+          <tr><td>Approving itself</td><td><code>approve</code> and <code>amend --accept</code> are refused by the gate and need an interactive terminal.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="costs" aria-labelledby="costs-h">
+      <h2 id="costs-h"><span class="disc">G</span>Costs and limits</h2>
+      <p>Early measurements, on small diffs, with Sonnet as the reviewer:</p>
+      <table class="ref">
+        <thead><tr><th scope="col">Measure</th><th scope="col">Early figure</th></tr></thead>
+        <tbody>
+          <tr><td>Starting the tool through <code>dnx</code></td><td>≈ 0.5 s added to every Bash or edit tool call</td></tr>
+          <tr><td>One review</td><td>4–5 s per new staged diff</td></tr>
+        </tbody>
+      </table>
+      <p>The reviewer model is called once per distinct diff and intent pair; a diff already reviewed costs nothing.</p>
+      <h3>Known limits</h3>
+      <ul>
+        <li>An agent that stashes its work gets a clean tree back and could freeze a new intent. The freeze is logged and shows in <code>kaldor report</code>.</li>
+        <li>The review history lives in the working tree: <code>git worktree remove</code> or <code>git clean -fdx</code> deletes it.</li>
+        <li>A shell command can still write to <code>.kaldor/state.json</code> and forge a pass. Kaldor targets shortcuts, not tampering.</li>
+        <li>A staged diff over 600,000 characters is refused outright: split the commit.</li>
+        <li>When the reviewer fails or returns no verdict, the commit is blocked and the next attempt reviews again.</li>
+        <li>Narrowing the hook to save the 0.5 s would reopen the bypasses it exists to close.</li>
+      </ul>
+    </section>
+  </main>
+</div>
+
+<footer>
+  Kaldor is open source under the <a href="https://github.com/Atypical-Consulting/kaldor/blob/main/LICENSE">MIT license</a>, © 2026 Atypical Consulting.
+  Design notes: <a href="https://github.com/Atypical-Consulting/kaldor/blob/main/docs/project-dossier.md">project dossier</a> ·
+  <a href="https://github.com/Atypical-Consulting/kaldor/blob/main/docs/architecture-analysis.md">architecture analysis</a>.
+  Inspired by Antique, described in <a href="https://www.anthropic.com/engineering/redesigning-source-control">Redesigning source control at Anthropic</a>.
+</footer>
+
+<script>
+  // Progressive enhancement: mark the section in view in the contents, and play Fig. 1 once it is seen.
+  const links = [...document.querySelectorAll('.index a')];
+  const spy = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting)
+      links.forEach(a => a.setAttribute('aria-current', a.hash === '#' + e.target.id));
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  document.querySelectorAll('main section').forEach(s => spy.observe(s));
+  const play = new IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('live'); play.unobserve(e.target); }
+  }, { threshold: .5 });
+  document.querySelectorAll('.flow').forEach(f => play.observe(f));
+</script>
+</body>
+</html>

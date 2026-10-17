@@ -60,7 +60,7 @@ Your commands, from your own terminal:
 
 | Command | What it does |
 | --- | --- |
-| `kaldor report [count]` | The latest reviews: intent, deviations, hunks worth reading |
+| `kaldor report [count]` | The latest reviews from every worktree: intent, deviations, hunks worth reading |
 | `kaldor approve` | Force the staged diff through when you disagree with the reviewer |
 | `kaldor intent amend --accept` | Accept a change to the intent that Claude proposed |
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |
@@ -105,6 +105,13 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | Committing from a script | The git pre-commit hook runs the same check for any commit made inside Claude Code |
 | `--no-verify`, `core.hooksPath` | Refused |
 | Breaking the hook | `onFailure: "block"`: a failing or timed-out hook blocks |
+
+### Known limits
+
+- An agent that stashes its work gets a clean tree back and could freeze a new intent. The freeze is logged and shows in `kaldor report`.
+- A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
+- A staged diff over 600,000 characters is refused outright: split the commit.
+- When the reviewer fails or returns no verdict, the commit is blocked and the next attempt reviews again.
 
 Known costs: about 0.5 s of `dnx` startup on each Bash or edit tool call, and one reviewer call (a few seconds, a few cents) per distinct staged diff.
 

@@ -14,7 +14,7 @@
 <body>
 <header class="top">
   <a class="wordmark" href="#how">Kaldor<i aria-hidden="true"></i></a>
-  <span class="edition">Instructions for use · 1.0</span>
+  <span class="edition">Instructions for use · 1.1.0</span> <!-- x-release-please-version -->
   <nav aria-label="Site">
     <a href="#install">Install</a>
     <a href="#commands">Commands</a>
@@ -309,7 +309,7 @@ kaldor intent amend --accept                                     <span class="c"
           <tr><td><code>kaldor intent freeze</code></td><td><span class="who">The agent</span></td><td>Records the hash of <code>.kaldor/intent.md</code>. Refused mid-task if another intent is frozen.</td></tr>
           <tr><td><code>kaldor intent amend "…"</code></td><td><span class="who">The agent</span></td><td>Proposes a change to the frozen intent. It has no effect until you accept it.</td></tr>
           <tr><td><code>kaldor intent amend --accept</code></td><td><span class="who human">You only</span></td><td>Appends the dated amendment to the intent and freezes it again.</td></tr>
-          <tr><td><code>kaldor report [count]</code></td><td><span class="who human">You</span></td><td>The latest reviews at intent level (default 10).</td></tr>
+          <tr><td><code>kaldor report [count]</code></td><td><span class="who human">You</span></td><td>The latest reviews at intent level (default 10), from every worktree of the repository.</td></tr>
           <tr><td><code>kaldor review</code></td><td><span class="who human">You</span></td><td>Dry-run review of the staged diff. Nothing is recorded.</td></tr>
           <tr><td><code>kaldor approve</code></td><td><span class="who human">You only</span></td><td>Forces the staged diff through without a passing review, with a trace in the history.</td></tr>
           <tr><td><code>kaldor doctor</code></td><td><span class="who human">You</span></td><td>Checks git, Claude Code, the plugin, the rules and the <code>pre-commit</code> hook.</td></tr>

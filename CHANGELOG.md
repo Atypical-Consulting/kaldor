@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.0.2...v1.1.0) (2026-10-17)
+
+
+### Added
+
+* keep state and history in the git directory and refuse shell writes to them ([#16](https://github.com/Atypical-Consulting/kaldor/issues/16)) ([244b86c](https://github.com/Atypical-Consulting/kaldor/commit/244b86c49404f2c8cd329e3707d0d7dbe7aa4319))
+
+
+### Fixed
+
+* align the doctor's plugin install hint with the docs ([#14](https://github.com/Atypical-Consulting/kaldor/issues/14)) ([b8228f1](https://github.com/Atypical-Consulting/kaldor/commit/b8228f193898748fab9c3660eccdc8fb706f91e0))
+
 ## [1.0.2](https://github.com/Atypical-Consulting/kaldor/compare/v1.0.1...v1.0.2) (2026-10-17)
 
 

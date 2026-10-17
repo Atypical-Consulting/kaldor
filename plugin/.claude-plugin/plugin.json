@@ -1,0 +1,14 @@
+{
+  "name": "kaldor",
+  "displayName": "Kaldor",
+  "version": "0.0.0",
+  "description": "Intent/code review guard: no agent commit enters the repository without being checked against a declared intent, by a reviewer the agent does not control.",
+  "author": {
+    "name": "Atypical Consulting",
+    "url": "https://github.com/Atypical-Consulting"
+  },
+  "homepage": "https://github.com/Atypical-Consulting/kaldor",
+  "repository": "https://github.com/Atypical-Consulting/kaldor",
+  "license": "MIT",
+  "keywords": ["code-review", "intent", "git-hooks", "guardrails"]
+}

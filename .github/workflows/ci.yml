@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # The bypass tests create real git repositories and commit in them.
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+
+      - name: Build
+        run: dotnet build -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release
+
+      - name: Pack
+        run: dotnet pack src/Kaldor -c Release --no-build -o artifacts
+
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Every file release-please stamps must carry the same version, or the plugin would launch
+      # a tool version that does not match its own.
+      - name: Versions agree
+        run: |
+          want=$(jq -r '."."' .release-please-manifest.json)
+          got=(
+            "$(grep -oP '<Version>\K[^<]+' Directory.Build.props)"
+            "$(jq -r .version plugin/.claude-plugin/plugin.json)"
+            "$(jq -r '.hooks.PreToolUse[0].hooks[0].args[2]' plugin/hooks/hooks.json)"
+            "$(grep -oP -- '--version \K\S+' plugin/bin/kaldor)"
+            "$(grep -oP -- '--version \K\S+' plugin/bin/kaldor.cmd)"
+          )
+          for v in "${got[@]}"; do
+            if [ "$v" != "$want" ]; then echo "::error::Found version $v, expected $want everywhere."; exit 1; fi
+          done
+          echo "All five version stamps are $want."

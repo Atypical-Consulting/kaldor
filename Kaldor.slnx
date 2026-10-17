@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kaldor/Kaldor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kaldor.Tests/Kaldor.Tests.csproj" />
+  </Folder>
+</Solution>

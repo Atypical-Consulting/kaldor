@@ -1,0 +1,98 @@
+name: release-please
+
+# On every push to main, release-please keeps a release PR up to date: CHANGELOG.md, the manifest,
+# the <Version> in Directory.Build.props and the four plugin version stamps (release-please-config.json).
+# Merging that PR tags vX.Y.Z and creates the GitHub Release; the publish job then pushes the tool to
+# NuGet. Publishing lives in THIS workflow, gated on release_created, because a tag created with
+# GITHUB_TOKEN does not trigger other workflows.
+
+on:
+  push:
+    branches: [main]
+  # Manual re-run: refreshes the release PR, or finishes a merged release whose run failed.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # release-please creates the `autorelease: pending` label it uses to find the merged release PR.
+  issues: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Pack & publish
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # upload the package to the release
+      id-token: write # OIDC token for NuGet trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+
+      - name: Test
+        run: dotnet test -c Release
+
+      # The plugin launches exactly this version through dnx; a mismatch would ship a plugin that
+      # cannot find its tool.
+      - name: Check the plugin pins the release version
+        run: |
+          want="${{ needs.release-please.outputs.version }}"
+          got="$(jq -r '.hooks.PreToolUse[0].hooks[0].args[2]' plugin/hooks/hooks.json)"
+          if [ "$got" != "$want" ]; then echo "::error::hooks.json pins $got, release is $want."; exit 1; fi
+
+      - name: Pack
+        run: dotnet pack src/Kaldor -c Release -o artifacts -p:Version=${{ needs.release-please.outputs.version }}
+
+      # Trusted publishing: exchanges the OIDC token for a NuGet key valid about an hour. Needs a policy on
+      # nuget.org naming this repository and this workflow file (release-please.yml), and the NUGET_USER
+      # secret (the nuget.org profile name). Deliberately not skipped when the secret is missing: a release
+      # that was meant to publish and could not must fail, not go green.
+      - name: NuGet login (OIDC to short-lived key)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push artifacts/*.nupkg \
+            --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Attach the package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" artifacts/*.nupkg --clobber

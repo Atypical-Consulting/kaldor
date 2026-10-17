@@ -8,7 +8,13 @@
           {
             "type": "command",
             "command": "dnx",
-            "args": ["--yes", "--version", "0.0.0", "Atypical.Kaldor", "gate"],
+            "args": [
+              "--yes",
+              "--version",
+              "1.0.0",
+              "Atypical.Kaldor",
+              "gate"
+            ],
             "onFailure": "block",
             "timeout": 900,
             "statusMessage": "Kaldor gate"

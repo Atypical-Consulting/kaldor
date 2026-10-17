@@ -75,8 +75,37 @@ public class CommandParserTests
     [InlineData("kaldor approve", true)]
     [InlineData("dnx --yes Atypical.Kaldor approve", true)]
     [InlineData("echo y | kaldor intent amend --accept", true)]
+    [InlineData("sudo -E kaldor approve", true)]
+    [InlineData("/usr/local/bin/kaldor approve", true)]
+    [InlineData("kaldor.cmd approve", true)]
+    [InlineData("dotnet tool run kaldor intent amend --accept", true)]
+    [InlineData("bash -c \"kaldor approve\"", true)]
+    [InlineData("eval 'kaldor approve'", true)]
+    [InlineData("echo \"$(kaldor approve)\"", true)]
+    [InlineData("echo \"`kaldor approve`\"", true)]
+    [InlineData("cat <<EOF\n$(kaldor approve)\nEOF", true)]
+    [InlineData("git status # then\nkaldor approve", true)]
     [InlineData("kaldor intent amend \"add caching\"", false)]
     [InlineData("kaldor report", false)]
+    [InlineData("echo \"kaldor approve\"", false)]
+    [InlineData("echo 'run kaldor intent amend --accept'", false)]
+    [InlineData("git status # then kaldor approve", false)]
+    [InlineData("cat > DESIGN.md <<'EOF'\nAsk the user to run\nkaldor approve\nEOF\nls", false)]
+    [InlineData("cat <<-\"EOF\" | wc -l\n\tkaldor approve\n\tEOF", false)]
+    [InlineData("gh issue create --title x --body \"$(cat <<'EOF'\nthe gate refused\nkaldor approve\nEOF\n)\"", false)]
+    [InlineData("gh issue create --body \"blocked by kaldor approve; see #7\"", false)]
+    [InlineData("echo $((1 << 2)) \"kaldor approve\"", false)]
     public void Spots_human_only_commands(string command, bool humanOnly) =>
-        Assert.Equal(humanOnly, CommandParser.RunsHumanOnlyCommand(command));
+        Assert.Equal(humanOnly, CommandParser.RunsHumanOnlyCommand(command, Cwd, NoAliases));
+
+    [Theory]
+    [InlineData("cat <<'EOF'\ngit commit -m x\nEOF")]
+    [InlineData("git log # git commit -m x")]
+    public void Ignores_commits_in_heredocs_and_comments(string command) => Assert.Empty(Find(command));
+
+    [Theory]
+    [InlineData("echo \"$(git commit -m x)\"")]
+    [InlineData("cat <<'EOF'\nbody\nEOF\ngit commit -m x")]
+    [InlineData("cat <<EOF\n$(git commit -m x)\nEOF")]
+    public void Detects_commits_around_heredocs_and_in_quoted_substitutions(string command) => Assert.Single(Find(command));
 }

@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace Kaldor;
 
@@ -12,7 +11,7 @@ sealed record CommitCall(string Dir, bool SkipsHooks);
 /// subshells, <c>bash -c "..."</c> and aliases. A commit hidden in a script file is out of reach here; the git
 /// <c>pre-commit</c> hook installed by <c>kaldor init</c> catches that one.
 /// </summary>
-static partial class CommandParser
+static class CommandParser
 {
     static readonly HashSet<string> Prefixes =
         ["sudo", "command", "env", "exec", "time", "nohup", "nice", "builtin", "!", "{", "if", "then", "else", "elif", "do", "while", "until"];
@@ -28,20 +27,42 @@ static partial class CommandParser
         "show", "stash", "status", "submodule", "switch", "tag", "worktree",
     ];
 
-    [GeneratedRegex(@"(?i)\b(kaldor|atypical\.kaldor)\b[^;&|\n]*?(\bapprove\b|--accept\b)")]
-    private static partial Regex HumanOnlyRegex();
-
-    /// <summary>True when the command runs one of the commands reserved for a human.</summary>
-    public static bool RunsHumanOnlyCommand(string command) => HumanOnlyRegex().IsMatch(command);
-
-    public static List<CommitCall> FindCommits(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null)
+    sealed class Findings
     {
-        var found = new List<CommitCall>();
+        public readonly List<CommitCall> Commits = [];
+        public bool HumanOnly;
+    }
+
+    /// <summary>
+    /// True when the command runs <c>kaldor approve</c> or <c>kaldor intent amend --accept</c>, directly or through
+    /// <c>dnx</c> / <c>dotnet</c>. A mention in quoted text, a comment or a quoted heredoc is not a run.
+    /// </summary>
+    public static bool RunsHumanOnlyCommand(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
+        ScanAll(command, cwd, aliases).HumanOnly;
+
+    public static List<CommitCall> FindCommits(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
+        ScanAll(command, cwd, aliases).Commits;
+
+    static Findings ScanAll(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases)
+    {
+        var found = new Findings();
         Scan(command, cwd, aliases ?? GitAliases, found, depth: 0);
         return found;
     }
 
-    static void Scan(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, List<CommitCall> found, int depth)
+    /// <summary>The arguments given to the Kaldor tool when <paramref name="name"/> launches it, else null.</summary>
+    static List<string>? KaldorArgs(string name, List<string> rest)
+    {
+        if (name is "kaldor" or "kaldor.cmd") return rest;
+        if (name is not ("dnx" or "dotnet")) return null;
+        var tool = rest.FindIndex(a => a.Equals("Atypical.Kaldor", StringComparison.OrdinalIgnoreCase) || a.Equals("kaldor", StringComparison.OrdinalIgnoreCase));
+        return tool < 0 ? null : rest[(tool + 1)..];
+    }
+
+    static bool IsHumanOnly(List<string> args) =>
+        args is ["approve", ..] or ["intent", "amend", "--accept", ..];
+
+    static void Scan(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
     {
         if (depth > 5) return;
         foreach (var segment in Segments(command))
@@ -74,10 +95,14 @@ static partial class CommandParser
             {
                 ScanGit(rest, cwd, aliases, found, depth);
             }
+            else if (KaldorArgs(name, rest) is { } toolArgs && IsHumanOnly(toolArgs))
+            {
+                found.HumanOnly = true;
+            }
         }
     }
 
-    static void ScanGit(List<string> args, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, List<CommitCall> found, int depth)
+    static void ScanGit(List<string> args, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
     {
         var dir = cwd;
         var skipsHooks = false;
@@ -96,7 +121,7 @@ static partial class CommandParser
         var rest = args.Skip(j + 1).ToList();
         if (sub == "commit")
         {
-            found.Add(new CommitCall(dir, skipsHooks || SkipsVerify(rest)));
+            found.Commits.Add(new CommitCall(dir, skipsHooks || SkipsVerify(rest)));
         }
         else if (!Builtins.Contains(sub) && aliases(dir).TryGetValue(sub, out var expansion))
         {
@@ -146,9 +171,56 @@ static partial class CommandParser
 
     static List<string> Split(string text) => Segments(text).SelectMany(s => s).ToList();
 
+    readonly record struct Heredoc(string Delimiter, bool StripTabs, bool Quoted);
+
+    /// <summary>Reads the delimiter after <c>&lt;&lt;</c> or <c>&lt;&lt;-</c>; returns the index of its last character.</summary>
+    static int ReadHeredocDelimiter(string command, int i, List<Heredoc> heredocs)
+    {
+        var stripTabs = i < command.Length && command[i] == '-';
+        if (stripTabs) i++;
+        while (i < command.Length && command[i] is ' ' or '\t') i++;
+        var delimiter = new StringBuilder();
+        var quoted = false;
+        char quote = '\0';
+        for (; i < command.Length; i++)
+        {
+            var c = command[i];
+            if (quote != '\0')
+            {
+                if (c == quote) quote = '\0'; else delimiter.Append(c);
+                continue;
+            }
+            if (c is '\'' or '"') { quote = c; quoted = true; }
+            else if (c == '\\' && i + 1 < command.Length) { quoted = true; delimiter.Append(command[++i]); }
+            else if (c is ' ' or '\t' or '\n' or '\r' or ';' or '&' or '|' or '<' or '>' or '(' or ')') break;
+            else delimiter.Append(c);
+        }
+        if (delimiter.Length > 0) heredocs.Add(new Heredoc(delimiter.ToString(), stripTabs, quoted));
+        return i - 1;
+    }
+
+    /// <summary>Skips the heredoc bodies that start after the newline at <paramref name="i"/>; returns the index of the last newline skipped.</summary>
+    static int SkipHeredocBodies(string command, int i, List<Heredoc> heredocs)
+    {
+        foreach (var heredoc in heredocs)
+        {
+            while (i < command.Length)
+            {
+                var end = command.IndexOf('\n', i + 1);
+                if (end < 0) end = command.Length;
+                var line = command[(i + 1)..end].TrimEnd('\r');
+                i = end;
+                if ((heredoc.StripTabs ? line.TrimStart('\t') : line) == heredoc.Delimiter) break;
+            }
+        }
+        return i;
+    }
+
     /// <summary>
     /// Splits a command line into simple commands (on <c>; &amp; | &amp;&amp; || ( ) $( `</c> and newlines) and each one
-    /// into words, honouring single quotes, double quotes and backslash escapes.
+    /// into words, honouring single quotes, double quotes and backslash escapes. A command substitution inside double
+    /// quotes is parsed as commands; comments and the bodies of quoted heredocs (<c>&lt;&lt;'EOF'</c>) are skipped.
+    /// An unquoted heredoc body stays parsed as commands, since the shell expands the <c>$(...)</c> in it.
     /// </summary>
     internal static List<List<string>> Segments(string command)
     {
@@ -157,6 +229,9 @@ static partial class CommandParser
         var word = new StringBuilder();
         var inWord = false;
         char quote = '\0';
+        // Open command substitutions: the quote to restore, the closer (')' or '`') and the nested '(' count.
+        var substitutions = new Stack<(char Quote, char Closer, int Depth)>();
+        var heredocs = new List<Heredoc>();
 
         void EndWord()
         {
@@ -187,9 +262,19 @@ static partial class CommandParser
                 continue;
             }
             // Command substitution starts a new command even inside double quotes.
+            if (c == '`' && quote == '\0' && substitutions.TryPeek(out var open) && open.Closer == '`')
+            {
+                EndSegment();
+                substitutions.Pop();
+                quote = open.Quote;
+                inWord = quote != '\0';
+                continue;
+            }
             if (c == '`' || (c == '$' && i + 1 < command.Length && command[i + 1] == '('))
             {
                 EndSegment();
+                substitutions.Push((quote, c == '$' ? ')' : '`', 0));
+                quote = '\0';
                 if (c == '$') i++;
                 continue;
             }
@@ -203,6 +288,29 @@ static partial class CommandParser
                 case '\'' or '"':
                     quote = c;
                     inWord = true;
+                    break;
+                case '#' when !inWord:
+                    while (i + 1 < command.Length && command[i + 1] != '\n') i++;
+                    break;
+                case '<' when i + 2 < command.Length && command[i + 1] == '<' && command[i + 2] != '<' && (i == 0 || command[i - 1] != '<'):
+                    EndWord();
+                    i = ReadHeredocDelimiter(command, i + 2, heredocs);
+                    break;
+                case '\n' when heredocs.Count > 0:
+                    EndSegment();
+                    // One unquoted body on the line keeps every body parsed: they follow in order and cannot be told apart.
+                    if (heredocs.All(h => h.Quoted)) i = SkipHeredocBodies(command, i, heredocs);
+                    heredocs.Clear();
+                    break;
+                case '(' when substitutions.TryPeek(out var outer) && outer.Closer == ')':
+                    EndSegment();
+                    substitutions.Push(substitutions.Pop() with { Depth = outer.Depth + 1 });
+                    break;
+                case ')' when substitutions.TryPeek(out var inner) && inner.Closer == ')':
+                    EndSegment();
+                    substitutions.Pop();
+                    if (inner.Depth > 0) substitutions.Push(inner with { Depth = inner.Depth - 1 });
+                    else { quote = inner.Quote; inWord = quote != '\0'; }
                     break;
                 case ';' or '&' or '|' or '(' or ')' or '\n' or '\r':
                     EndSegment();

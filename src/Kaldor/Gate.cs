@@ -58,7 +58,7 @@ static class Gate
 
     static string? GuardCommand(string cwd, string command, Reviewer review)
     {
-        if (CommandParser.RunsHumanOnlyCommand(command))
+        if (CommandParser.RunsHumanOnlyCommand(command, cwd))
             return "`kaldor approve` and `kaldor intent amend --accept` are reserved for the user, in their own terminal. Ask them.";
 
         foreach (var commit in CommandParser.FindCommits(command, cwd))

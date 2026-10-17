@@ -1,7 +1,7 @@
 {
   "name": "kaldor",
   "displayName": "Kaldor",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Intent/code review guard: no agent commit enters the repository without being checked against a declared intent, by a reviewer the agent does not control.",
   "author": {
     "name": "Atypical Consulting",

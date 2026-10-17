@@ -28,7 +28,7 @@ public sealed class BypassTests : IDisposable
         File.WriteAllText(Path.Combine(_root, ".kaldor", ".gitignore"), "*\n!.gitignore\n!rules.json\n");
         Proc.Git(_root, "add", "-A");
         Proc.Git(_root, "commit", "-q", "-m", "init");
-        _repo = new Repo(Path.GetFullPath(_root));
+        _repo = Repo.Find(_root)!;
     }
 
     public void Dispose()
@@ -188,6 +188,35 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(2, Commit("dnx --yes Atypical.Kaldor intent amend --accept").Code);
         // Mentioning them is not running them.
         Assert.Equal(0, Commit("echo \"ask the user to run kaldor approve\"").Code);
+    }
+
+    [Theory]
+    [InlineData("echo '{}' > .git/kaldor/state.json")]
+    [InlineData("echo x>>.git/kaldor/log/forged.json")]
+    [InlineData("echo '{}' | tee .git/kaldor/state.json")]
+    [InlineData("cp /tmp/forged.json .git/kaldor/state.json")]
+    [InlineData("cd .git && rm -rf kaldor")]
+    [InlineData("rm -rf .kaldor")]
+    [InlineData("sed -i 's/sonnet/haiku/' .kaldor/rules.json")]
+    [InlineData("Set-Content -Path .kaldor/rules.json -Value '{}'")]
+    [InlineData("sudo dd if=/tmp/x of=.git/kaldor/state.json")]
+    public void Shell_cannot_write_kaldor_state_or_rules(string command) =>
+        Assert.Equal(2, Hook("Bash", new { command }).Code);
+
+    [Theory]
+    [InlineData("cat .kaldor/rules.json .git/kaldor/state.json")]
+    [InlineData("cp .kaldor/rules.json /tmp/rules-backup.json")]
+    [InlineData("echo 'the state lives in .git/kaldor/state.json' > notes.txt")]
+    [InlineData("echo \"a > .kaldor/rules.json\"")]
+    [InlineData("cat > .kaldor/intent.md <<'EOF'\n# Intent\nEOF")]
+    public void Shell_can_read_and_mention_kaldor_state(string command) =>
+        Assert.Equal(0, Hook("Bash", new { command }).Code);
+
+    [Fact]
+    public void Edit_tools_cannot_write_in_the_git_directory_state()
+    {
+        Assert.Equal(2, Hook("Write", new { file_path = Path.Combine(_root, ".git", "kaldor", "state.json"), content = "{}" }).Code);
+        Assert.Equal(2, Hook("Edit", new { file_path = ".git/kaldor/log/x.json" }).Code);
     }
 
     [Fact]

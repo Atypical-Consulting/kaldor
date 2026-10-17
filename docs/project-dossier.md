@@ -12,7 +12,7 @@ Chosen name: **Kaldor** (command `kaldor`). It is an invented brand, unrelated t
 | --- | --- |
 | NuGet ID | `Atypical.Kaldor` |
 | Command | `kaldor` |
-| State folder | `.kaldor/` |
+| State folders | `.kaldor/` (rules, intent), `.git/kaldor/` (state, history) |
 | Site | kaldor.atypical.consulting, served by GitHub Pages |
 | Distribution | Claude Code plugin and .NET tool on NuGet, no npm |
 | License | MIT |
@@ -160,7 +160,7 @@ Your estimated reading time: one hunk instead of 6 files
 
 ## File contracts
 
-Three files in `.kaldor/` hold all the state; proposed formats, to be validated in the first POC.
+The rules and the intent sit in `.kaldor/`; the state and the history sit in the git common directory, `.git/kaldor/` for the main worktree and `.git/kaldor/worktrees/<id>/` for a linked one, so `git clean` and `git worktree remove` keep them.
 
 **Intent** (`.kaldor/intent.md`), written before the code and frozen by hash:
 
@@ -183,7 +183,7 @@ Expected files: OrdersController.cs, OrdersQuery.cs, related tests
 }
 ```
 
-**State** (`.kaldor/state.json`, local): the frozen intent hash and the (diff hash, intent hash) pairs that passed review or were approved. Reviews and approvals are logged one file each in `.kaldor/log/`.
+**State** (`.git/kaldor/state.json`, local): the frozen intent hash and the (diff hash, intent hash) pairs that passed review or were approved. Reviews and approvals are logged one file each in `.git/kaldor/log/`. Kaldor 1.0 kept both in `.kaldor/`; they move on first use.
 
 **Verdict** (the reviewer's JSON output, never written by the agent):
 
@@ -209,7 +209,7 @@ Proposed targets for v1; latency and cost figures will be set after measuring 20
 | Platforms | macOS, Windows, Linux, thanks to the .NET tool launched via dnx in exec form |
 | Prerequisites | .NET 10 SDK (for `dnx`), Claude Code v2.1.295 or later (`onFailure`), git; network on first call, NuGet cache afterwards |
 | Privacy | The diff and the intent go to the same provider as the Claude Code session; no third-party service added |
-| Traceability | Every verdict and every forced approval is logged in `.kaldor/log/` |
+| Traceability | Every verdict and every forced approval is logged in `.git/kaldor/log/` |
 | Compatibility | Kaldor modifies neither git nor the remote repository; uninstalling the plugin restores a standard Claude Code |
 
 ## Stack and repository layout

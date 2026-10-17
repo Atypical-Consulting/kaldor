@@ -193,7 +193,7 @@ static class Commands
             "Install or update Claude Code: claude update");
         var plugins = claude is null ? null : Try("claude", "plugin", "list");
         Line(plugins?.Contains("kaldor") == true, "Kaldor plugin installed in Claude Code",
-            "/plugin marketplace add Atypical-Consulting/kaldor, then /plugin install kaldor@kaldor");
+            "In Claude Code: /plugin install kaldor --marketplace Atypical-Consulting/kaldor");
 
         var repo = Repo.Find(cwd);
         if (repo is null)

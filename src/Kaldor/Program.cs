@@ -14,7 +14,7 @@ const string Usage = """
       kaldor doctor                     check the installation
       kaldor gate                       PreToolUse hook entry point (reads the hook JSON on stdin)
       kaldor check                      git pre-commit hook entry point
-      kaldor --version
+      kaldor version                    print the version (also --version)
     """;
 
 var cwd = Environment.CurrentDirectory;
@@ -35,7 +35,8 @@ try
         ["report", var n] when int.TryParse(n, out var count) => Commands.Report(cwd, count),
         ["approve"] => Commands.Approve(cwd),
         ["doctor"] => Commands.Doctor(cwd),
-        ["--version"] => Print(Commands.Version, 0),
+        // `version` too: dnx keeps `--version` for itself, so `dnx Atypical.Kaldor --version` never reaches us.
+        ["version" or "--version"] => Print(Commands.Version, 0),
         ["--help" or "-h" or "help"] => Print(Usage, 0),
         _ => Print(Usage, 1),
     };

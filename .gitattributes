@@ -1,0 +1,3 @@
+# The plugin launchers run on two shells: keep each with the line endings its shell expects.
+plugin/bin/kaldor eol=lf
+plugin/bin/kaldor.cmd eol=crlf

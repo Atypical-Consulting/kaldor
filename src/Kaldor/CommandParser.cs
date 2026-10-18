@@ -40,7 +40,7 @@ static class CommandParser
         ScanAll(command, cwd, aliases);
 
     /// <summary>
-    /// True when the command runs <c>kaldor approve</c> or <c>kaldor intent amend --accept</c>, directly or through
+    /// True when the command runs <c>kaldor approve</c>, <c>kaldor intent confirm</c> or <c>kaldor intent amend --accept</c>, directly or through
     /// <c>dnx</c> / <c>dotnet</c>. A mention in quoted text, a comment or a quoted heredoc is not a run.
     /// </summary>
     public static bool RunsHumanOnlyCommand(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
@@ -66,7 +66,7 @@ static class CommandParser
     }
 
     static bool IsHumanOnly(List<string> args) =>
-        args is ["approve", ..] or ["intent", "amend", "--accept", ..];
+        args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..];
 
     static void Scan(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
     {

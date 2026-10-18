@@ -57,6 +57,65 @@ public sealed class BypassTests : IDisposable
     {
         File.WriteAllText(_repo.IntentPath, text);
         Assert.Equal(0, Commands.Freeze(_root));
+        Commands.MarkConfirmed(_repo, text); // what `kaldor intent confirm` records once the user says yes
+    }
+
+    [Fact]
+    public void Commits_wait_for_the_user_to_confirm_the_intent()
+    {
+        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
+        Assert.Equal(0, Commands.Freeze(_root));
+        Assert.Equal(0, Hook("Write", new { file_path = Path.Combine(_root, "a.txt"), content = "x" }).Code);
+        Stage();
+
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("kaldor intent confirm", err);
+        Assert.Equal(0, _reviews);
+
+        Commands.MarkConfirmed(_repo, File.ReadAllText(_repo.IntentPath));
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+    }
+
+    [Fact]
+    public void Agent_cannot_confirm_the_intent()
+    {
+        Assert.Equal(2, Commit("kaldor intent confirm").Code);
+        Assert.Equal(2, Commit("dnx --yes Atypical.Kaldor intent confirm").Code);
+
+        // The command itself needs a person at an interactive terminal.
+        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
+        Assert.Equal(0, Commands.Freeze(_root));
+        var (code, _, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n");
+        Assert.Equal(1, code);
+        Assert.Contains("interactive terminal", err);
+        Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+    }
+
+    [Fact]
+    public void An_accepted_amendment_is_confirmed()
+    {
+        FreezeIntent();
+        Assert.Equal(0, Commands.ProposeAmendment(_root, "Also add a cache."));
+        Commands.ApplyAmendment(_repo, "Also add a cache.");
+        var state = _repo.LoadState();
+        Assert.Equal(Repo.Hash(File.ReadAllText(_repo.IntentPath)), state.IntentHash);
+        Assert.Equal(state.IntentHash, state.ConfirmedHash);
+    }
+
+    [Fact]
+    public void An_approved_diff_does_not_wait_for_confirmation()
+    {
+        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
+        Assert.Equal(0, Commands.Freeze(_root));
+        Stage();
+        // What `kaldor approve` records once the user says yes.
+        var state = _repo.LoadState();
+        state.Passes.Add(new Pass(Repo.Hash(_repo.StagedDiff()), state.IntentHash!, "approve"));
+        _repo.SaveState(state);
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(0, _reviews);
     }
 
     void Stage(string content = "hello")

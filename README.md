@@ -54,6 +54,7 @@ Prefer typing `kaldor`? `dotnet tool install -g Atypical.Kaldor`. The examples b
 Work with Claude Code as usual. Kaldor steps in twice:
 
 - **Before the first edit** of a task, Claude writes `.kaldor/intent.md`, shows it to you, then freezes it with `kaldor intent freeze`. Edits are refused until then.
+- **Confirm the intent** with `kaldor intent confirm` in your own terminal, any time before Claude's first commit. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
 - **At each commit**, the reviewer runs (a few seconds). Accepted commits go through; rejected ones come back to Claude with the list of deviations.
 
 Your commands, from your own terminal:
@@ -61,12 +62,13 @@ Your commands, from your own terminal:
 | Command | What it does |
 | --- | --- |
 | `kaldor report [count]` | The latest reviews from every worktree: intent, deviations, hunks worth reading |
+| `kaldor intent confirm` | Confirm the intent Claude froze; its commits wait for it |
 | `kaldor approve` | Force the staged diff through when you disagree with the reviewer |
 | `kaldor intent amend --accept` | Accept a change to the intent that Claude proposed |
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |
 | `kaldor doctor` | Check the installation |
 
-`approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they need an interactive terminal.
+`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they need an interactive terminal.
 
 ```text
 2026-10-17 23:30  review          BLOCKED
@@ -99,6 +101,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | --- | --- |
 | Framing the reviewer | The hook launches the reviewer with a fixed prompt; the agent never writes a word of it |
 | Writing its own verdict | The verdict is produced inside the hook's process; the state in `.git/kaldor/` and the rules are closed to the agent's edits and shell writes |
+| Freezing an intent you never saw | Commits wait until you run `kaldor intent confirm` |
 | Rewriting the intent | Frozen by hash; changes go through an amendment only you can accept |
 | Changing code after review | Verdicts are bound to the hash of the staged diff |
 | `git -C`, `cd x &&`, `bash -c`, aliases | The hook parses the command line itself |
@@ -108,7 +111,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 
 ### Known limits
 
-- An agent that stashes its work gets a clean tree back and could freeze a new intent. The freeze is logged and shows in `kaldor report`.
+- An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
 - A staged diff over 600,000 characters is refused outright: split the commit.
 - When the reviewer fails or returns no verdict, the commit is blocked and the next attempt reviews again.

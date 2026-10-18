@@ -23,7 +23,9 @@ conversation, so the intent must say everything the reviewer needs.
    ```
 
 3. Show the intent to the user and wait for their agreement or correction.
-4. Freeze it: `kaldor intent freeze`. From then on, edits are allowed and commits are reviewed.
+4. Freeze it: `kaldor intent freeze`. From then on, edits are allowed.
+5. Ask the user to confirm it by running `kaldor intent confirm` in their own terminal. Commits are refused until
+   they do; you cannot run it yourself.
 
 ## Committing
 
@@ -46,4 +48,5 @@ Then tell the user and ask them to run `kaldor intent amend --accept` in their o
 accept it; until then, commits are reviewed against the original intent.
 
 If the user disagrees with a rejection, they can force the commit with `kaldor approve` in their own terminal.
-Never run `kaldor approve` or `kaldor intent amend --accept` yourself: both are refused to you.
+Never run `kaldor approve`, `kaldor intent confirm` or `kaldor intent amend --accept` yourself: all three are
+refused to you.

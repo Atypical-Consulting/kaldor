@@ -77,8 +77,38 @@ static class Commands
 
         repo.SaveState(state with { IntentHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", null, null, hash, intent, null, null, null));
-        Console.WriteLine($"Intent frozen ({hash[..19]}…). Commits are now reviewed against it.");
+        Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run `kaldor intent confirm` in their own " +
+                          "terminal: commits wait for it, edits do not.");
         return 0;
+    }
+
+    /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
+    public static int ConfirmIntent(string cwd)
+    {
+        var repo = RequireRepo(cwd);
+        var state = repo.LoadState();
+        var intent = repo.ReadIntent();
+        if (state.IntentHash is null || intent is null) throw new KaldorException("No frozen intent to confirm.");
+        if (Repo.Hash(intent) != state.IntentHash)
+            throw new KaldorException("The intent changed after it was frozen; restore it or freeze it again first.");
+        if (state.ConfirmedHash == state.IntentHash)
+        {
+            Console.WriteLine("This intent is already confirmed.");
+            return 0;
+        }
+        Console.WriteLine($"Frozen intent:\n\n{intent.Trim()}\n");
+        if (!ConfirmByHuman("Confirm it? Claude's commits will be reviewed against it.")) return 1;
+
+        MarkConfirmed(repo, intent);
+        Console.WriteLine("Intent confirmed. Claude's commits are now reviewed against it.");
+        return 0;
+    }
+
+    internal static void MarkConfirmed(Repo repo, string intent)
+    {
+        var hash = Repo.Hash(intent);
+        repo.SaveState(repo.LoadState() with { ConfirmedHash = hash });
+        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", null, null, hash, intent, null, null, $"Confirmed by {Environment.UserName}"));
     }
 
     public static int ProposeAmendment(string cwd, string text)
@@ -99,14 +129,20 @@ static class Commands
         Console.WriteLine($"Proposed amendment:\n\n{text}\n");
         if (!ConfirmByHuman("Add it to the frozen intent?")) return 1;
 
+        ApplyAmendment(repo, text);
+        Console.WriteLine("Amendment accepted; the intent is frozen and confirmed again.");
+        return 0;
+    }
+
+    /// <summary>The user accepted the amendment, so the amended intent is confirmed as well as frozen.</summary>
+    internal static void ApplyAmendment(Repo repo, string text)
+    {
         File.AppendAllText(repo.IntentPath, $"\n\n## Amendment ({DateTime.Now:yyyy-MM-dd HH:mm})\n{text}\n");
         var intent = repo.ReadIntent()!;
         var hash = Repo.Hash(intent);
-        repo.SaveState(repo.LoadState() with { IntentHash = hash });
+        repo.SaveState(repo.LoadState() with { IntentHash = hash, ConfirmedHash = hash });
         File.Delete(repo.AmendmentPath);
         repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", null, null, hash, intent, null, null, null));
-        Console.WriteLine("Amendment accepted; the intent is frozen again.");
-        return 0;
     }
 
     /// <summary>The git pre-commit hook: same check as the gate, for commits the gate could not see.</summary>

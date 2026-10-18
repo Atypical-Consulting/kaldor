@@ -73,6 +73,18 @@ sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash
     public static State Empty => new(null, []);
 }
 
+/// <summary>
+/// What Kaldor accepts without asking again, shared by every worktree: the commits that existed when Kaldor first ran on
+/// the repository (<c>Baseline</c>), the patch-ids of reviewed and approved commits, and the commits the user approved.
+/// </summary>
+sealed class Reviewed
+{
+    public bool Seeded { get; set; }
+    public List<string> Baseline { get; set; } = [];
+    public List<string> PatchIds { get; set; } = [];
+    public List<string> ApprovedTips { get; set; } = [];
+}
+
 sealed record Hunk(string File, string Risk, bool MustRead);
 
 sealed record ReviewResult(string Verdict, string[] Deviations, Hunk[] Hunks, string Summary)
@@ -136,6 +148,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         if (repo.Enabled)
         {
             repo.MoveLegacyState();
+            repo.LoadReviewed(); // seeds the shared reviewed set on the first run
             RefreshHook(repo.HookPath);
         }
         return repo;
@@ -188,13 +201,17 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     static readonly string[] MetaFlags = ["--name-only", "--summary", "-z", "--no-renames", "--ignore-submodules=none"];
 
     /// <summary>
-    /// The pass for the staged diff, with the identity of the commit it becomes, and the one it has if it is made with
+    /// The pass for the staged diff (also recorded in the shared reviewed set), with the identity of the commit it becomes, and the one it has if it is made with
     /// <c>--amend</c> (the staged change on top of HEAD's own).
     /// </summary>
-    public Pass NewPass(string diffHash, string intentHash, string by) =>
-        new(diffHash, intentHash, by, Nullable(ChangeId("diff", "--cached")),
+    public Pass NewPass(string diffHash, string intentHash, string by)
+    {
+        var pass = new Pass(diffHash, intentHash, by, Nullable(ChangeId("diff", "--cached")),
             Proc.Run("git", ["--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD^"], Root).Code == 0
                 ? Nullable(ChangeId("diff", "--cached", "HEAD^")) : null);
+        AddReviewed([pass.PatchId, pass.AmendPatchId]); // for every worktree, not only this one
+        return pass;
+    }
 
     static string? Nullable(string? id) => string.IsNullOrEmpty(id) ? null : id;
 
@@ -220,20 +237,27 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         return code == 0 ? output.Trim() : null;
     }
 
+    /// <summary>What a commit check walks.</summary>
+    public static readonly string[] CommitRoots = ["HEAD"];
+    /// <summary>What a push check (and <c>approve</c>) walks: every local branch and tag, and a detached HEAD.</summary>
+    public static readonly string[] PushRoots = ["--branches", "--tags", "HEAD"];
+
     /// <summary>
-    /// The commits on HEAD that are not in <paramref name="state"/>'s <c>ReviewedTip</c> or on a remote-tracking branch and
-    /// that Kaldor has no reason to accept, oldest first. A commit is accepted when its patch-id has a pass or an approval,
-    /// when it changes nothing, or, for a merge, when its tree is what merging its parents gives. <c>Id</c> is what
-    /// <c>approve</c> records. A commit Kaldor cannot identify is not accepted.
+    /// The commits reachable from <paramref name="roots"/> that are not in the repository's baseline, not approved and not on
+    /// a remote-tracking branch, and that Kaldor has no reason to accept, oldest first. A commit is accepted when its
+    /// patch-id has a pass or an approval (in any worktree), when it changes nothing, or, for a merge, when its tree is what
+    /// merging its parents gives. <c>Id</c> is what <c>approve</c> records. A commit Kaldor cannot identify is not accepted.
     /// </summary>
-    public List<(string Sha, string Subject, string Id)> UnreviewedCommits(State state)
+    // ponytail: walks every unpushed commit since the baseline on each check; a long unpushed history costs a patch-id each.
+    public List<(string Sha, string Subject, string Id)> UnreviewedCommits(IEnumerable<string> roots)
     {
         var result = new List<(string, string, string)>();
-        if (Head() is null) return result;
-        // A tip that no longer exists (garbage collected) bounds nothing: all local commits are then checked.
-        var tip = state.ReviewedTip is { } t && Proc.Run("git", ["--no-replace-objects", "cat-file", "-e", t + "^{commit}"], Root).Code == 0
-            ? new[] { t } : [];
-        var lines = Proc.Git(Root, ["--no-replace-objects", "rev-list", "--reverse", "--parents", "HEAD", "--not", .. tip, "--remotes"])
+        var from = Head() is null ? roots.Where(r => r != "HEAD").ToList() : roots.ToList();
+        if (from.Count == 0) return result;
+        var reviewed = LoadReviewed();
+        var accepted = new HashSet<string>(reviewed.PatchIds);
+        foreach (var p in LoadState().Passes) { accepted.Add(p.PatchId ?? ""); accepted.Add(p.AmendPatchId ?? ""); }
+        var lines = Proc.Git(Root, ["--no-replace-objects", "rev-list", "--reverse", "--parents", .. from, "--not", .. ExistingCommits([.. reviewed.Baseline, .. reviewed.ApprovedTips]), "--remotes"])
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
         foreach (var line in lines)
         {
@@ -251,10 +275,73 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
                 id = sha;
                 if (parents.Length == 2 && IsCleanMerge(sha, parents)) continue;
             }
-            if (id.Length > 0 && state.Passes.Any(p => p.PatchId == id || p.AmendPatchId == id)) continue;
+            if (id.Length > 0 && accepted.Contains(id)) continue;
             result.Add((sha, Proc.Git(Root, "--no-replace-objects", "show", "-s", "--format=%h %s", sha).Trim(), id));
         }
         return result;
+    }
+
+    /// <summary>The names of the local branches and tags that contain <paramref name="sha"/>, for the refusal message.</summary>
+    public string[] RefsContaining(string sha) =>
+        Proc.Git(Root, "for-each-ref", "--contains", sha, "--format=%(refname:short)", "refs/heads", "refs/tags")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+    // A commit that no longer exists (garbage collected) bounds nothing: more is checked, never less.
+    List<string> ExistingCommits(IEnumerable<string> ids)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return [];
+        var (_, output, _) = Proc.Run("git", ["--no-replace-objects", "cat-file", "--batch-check=%(objectname) %(objecttype)"], Root,
+            string.Join('\n', list.Select(i => i + "^{commit}")) + "\n");
+        return output.Split('\n').Where(l => l.EndsWith(" commit")).Select(l => l.Split(' ')[0]).ToList();
+    }
+
+    public string ReviewedPath => Path.Combine(CommonStateDir, "reviewed.json");
+
+    /// <summary>
+    /// The shared reviewed set. The first call in a repository seeds it: the baseline is every commit that any branch, tag
+    /// or remote-tracking branch points to right now, plus whatever the per-worktree <c>state.json</c> files recorded.
+    /// After that, no worktree trusts history it has not seen reviewed.
+    /// </summary>
+    public Reviewed LoadReviewed() => UpdateReviewed(_ => { });
+
+    void AddReviewed(IEnumerable<string?> patchIds, IEnumerable<string>? approvedTips = null) =>
+        UpdateReviewed(r =>
+        {
+            r.PatchIds.AddRange(patchIds.OfType<string>().Where(i => i.Length > 0 && !r.PatchIds.Contains(i)).Distinct());
+            r.ApprovedTips.AddRange((approvedTips ?? []).Where(i => !r.ApprovedTips.Contains(i)).Distinct());
+        });
+
+    Reviewed UpdateReviewed(Action<Reviewed> change)
+    {
+        var result = new Reviewed();
+        UpdateShared<Reviewed>(ReviewedPath, r =>
+        {
+            if (!r.Seeded) Seed(r);
+            change(r);
+            return result = r;
+        });
+        return result;
+    }
+
+    void Seed(Reviewed r)
+    {
+        r.Seeded = true;
+        r.Baseline = Proc.Git(Root, "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/tags", "refs/remotes")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries).Distinct().ToList();
+        var dirs = new List<string> { CommonStateDir };
+        var linked = Path.Combine(CommonStateDir, "worktrees");
+        if (Directory.Exists(linked)) dirs.AddRange(Directory.GetDirectories(linked));
+        foreach (var dir in dirs)
+        {
+            State? old;
+            try { old = JsonSerializer.Deserialize<State>(File.ReadAllText(Path.Combine(dir, "state.json")), Json); }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { continue; }
+            if (old is null) continue;
+            foreach (var p in old.Passes) r.PatchIds.AddRange(new[] { p.PatchId, p.AmendPatchId }.OfType<string>());
+            if (old.ReviewedTip is { } tip) r.ApprovedTips.Add(tip);
+        }
+        r.PatchIds = r.PatchIds.Distinct().ToList();
     }
 
     bool IsCleanMerge(string sha, string[] parents)
@@ -263,11 +350,13 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         return code == 0 && output.Split('\n')[0] == Proc.Git(Root, "--no-replace-objects", "rev-parse", sha + "^{tree}").Trim();
     }
 
-    /// <summary>Records the user's approval of <paramref name="commits"/> and moves the reviewed tip to HEAD.</summary>
+    /// <summary>Records the user's approval of <paramref name="commits"/>, for every worktree.</summary>
     public void ApproveCommits(State state, IEnumerable<(string Sha, string Subject, string Id)> commits)
     {
-        foreach (var c in commits.Where(c => c.Id.Length > 0)) state.Passes.Add(new Pass("commit", state.IntentHash ?? "", "approve", c.Id));
-        SaveState(state with { ReviewedTip = Head() });
+        var list = commits.ToList();
+        foreach (var c in list.Where(c => c.Id.Length > 0)) state.Passes.Add(new Pass("commit", state.IntentHash ?? "", "approve", c.Id));
+        SaveState(state);
+        AddReviewed(list.Select(c => c.Id), list.Select(c => c.Sha));
     }
 
     /// <summary>True when the work tree has changes outside <c>.kaldor/</c>: a task is in progress.</summary>
@@ -352,13 +441,13 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public List<string> LoadPreconfirmed() => ReadShared(PreconfirmedPath);
 
     public void SavePreconfirmed(IEnumerable<string> hashes) =>
-        UpdateShared(PreconfirmedPath, _ => hashes.Distinct().ToList());
+        UpdateShared<List<string>>(PreconfirmedPath, _ => hashes.Distinct().ToList());
 
     /// <summary>Removes <paramref name="hash"/> from the shared set under an exclusive lock; true for exactly one caller.</summary>
     public bool TakePreconfirmed(string hash)
     {
         var found = false;
-        UpdateShared(PreconfirmedPath, set => { found = set.Remove(hash); return set; });
+        UpdateShared<List<string>>(PreconfirmedPath, set => { found = set.Remove(hash); return set; });
         return found;
     }
 
@@ -369,10 +458,10 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     }
 
     /// <summary>
-    /// Read-modify-write of a JSON list shared by all worktrees, holding an exclusive lock (<c>FileShare.None</c>) from read to write.
+    /// Read-modify-write of a JSON document shared by all worktrees, holding an exclusive lock (<c>FileShare.None</c>) from read to write.
     /// A malformed file counts as empty and is left alone when <paramref name="update"/> changes nothing.
     /// </summary>
-    static void UpdateShared(string path, Func<List<string>, List<string>> update)
+    static void UpdateShared<T>(string path, Func<T, T> update) where T : new()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         if (new FileInfo(path).LinkTarget is not null)
@@ -387,9 +476,9 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         }
         using (fs)
         {
-            List<string> current;
-            try { current = JsonSerializer.Deserialize<List<string>>(fs, Json) ?? []; }
-            catch (JsonException) { current = []; }
+            T current;
+            try { current = fs.Length == 0 ? new T() : JsonSerializer.Deserialize<T>(fs, Json) ?? new T(); }
+            catch (JsonException) { current = new T(); }
             var before = JsonSerializer.Serialize(current, Json);
             var after = JsonSerializer.Serialize(update(current), Json);
             if (before == after && fs.Length > 0) return;

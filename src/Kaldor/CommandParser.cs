@@ -40,6 +40,8 @@ static class CommandParser
         public readonly List<string> Pushes = [];
         /// <summary>True when the command also runs a git command that adds commits to HEAD (cherry-pick, rebase, ...).</summary>
         public bool AddsCommits;
+        /// <summary>True when a <c>git push</c> names a commit id (or a substitution) as the source of a refspec.</summary>
+        public bool PushesRawCommit;
         public bool HumanOnly;
         /// <summary>True when the command clears or hides <c>CLAUDECODE</c>, which Kaldor uses to tell Claude's commands from the user's.</summary>
         public bool ClearsClaudeCode;
@@ -242,13 +244,33 @@ static class CommandParser
         {
             found.Commits.Add(new CommitCall(dir, skipsHooks || SkipsVerify(rest)));
         }
-        else if (sub == "push") found.Pushes.Add(dir);
+        else if (sub == "push")
+        {
+            found.Pushes.Add(dir);
+            found.PushesRawCommit |= rest.Any(RawSource);
+        }
         else if (CommitAdders.Contains(sub)) found.AddsCommits = true;
         else if (!Builtins.Contains(sub) && aliases(dir).TryGetValue(sub, out var expansion))
         {
             if (expansion.StartsWith('!')) Scan(expansion[1..], dir, aliases, found, depth + 1);
             else ScanGit([.. Split(expansion), .. rest], dir, aliases, found, depth + 1);
         }
+    }
+
+    /// <summary>
+    /// A push source the history check cannot see: a commit id, a substitution, or a ref outside branches and tags
+    /// (<c>refs/stash</c>, <c>ORIG_HEAD</c>...). Branches, tags and HEAD are what the check walks.
+    /// </summary>
+    static bool RawSource(string arg)
+    {
+        if (arg.StartsWith('-')) return false;
+        var colon = arg.IndexOf(':');
+        var source = (colon < 0 ? arg : arg[..colon]).TrimStart('+');
+        if (source.Contains('$') || source.Contains('`')) return true;
+        if (source.StartsWith("refs/", StringComparison.Ordinal))
+            return !source.StartsWith("refs/heads/", StringComparison.Ordinal) && !source.StartsWith("refs/tags/", StringComparison.Ordinal);
+        if (source.EndsWith("_HEAD", StringComparison.Ordinal) && source != "HEAD") return true;
+        return colon >= 0 && source.Length >= 7 && source.All(char.IsAsciiHexDigit);
     }
 
     static readonly HashSet<string> ValueFlags =

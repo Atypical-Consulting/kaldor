@@ -156,7 +156,7 @@
 <pre>/plugin install kaldor --marketplace Atypical-Consulting/kaldor</pre></li>
         <li><p><strong>Once per repository</strong>, from your terminal, enable Kaldor. This creates <code>.kaldor/rules.json</code> and the git <code>pre-commit</code> hook (if one already exists, it prints the line to add to it). Kaldor stays silent in repositories without <code>.kaldor/rules.json</code>.</p>
 <pre>dnx Atypical.Kaldor init</pre></li>
-        <li><p><strong>Commit the rules yourself</strong>, from a regular terminal. The rules are your decision, so a commit of them by the agent is reviewed like any other.</p>
+        <li><p><strong>Commit the rules yourself</strong>, from a regular terminal, not through Claude. Kaldor refuses Claude's commits until a task intent is frozen and confirmed, so enabling Kaldor, like any later change to the rules, stays your decision.</p>
 <pre>git add .kaldor
 git commit -m "chore: enable Kaldor"</pre></li>
         <li><p><strong>Check the installation</strong> at any time.</p>

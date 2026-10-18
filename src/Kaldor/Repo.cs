@@ -429,10 +429,10 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     /// <summary>True when a local branch or remote-tracking ref has <c>.kaldor/rules.json</c> at its tip.</summary>
     bool AnyRefHasRules()
     {
-        var (code, refs, _) = Proc.Run("git", ["--no-replace-objects", "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes"], Root);
+        var (code, refs, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes"], Root);
         if (code != 0 || refs.Length == 0) return false;
         var query = string.Concat(refs.Split('\n', StringSplitOptions.RemoveEmptyEntries).Distinct().Select(sha => sha.Trim() + ":.kaldor/rules.json\n"));
-        var (c2, output, _) = Proc.Run("git", ["--no-replace-objects", "cat-file", "--batch-check"], Root, query);
+        var (c2, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "cat-file", "--batch-check"], Root, query);
         return c2 == 0 && output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(l => !l.TrimEnd().EndsWith(" missing"));
     }
 

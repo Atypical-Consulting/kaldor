@@ -176,7 +176,7 @@ Expected behavior: page and size parameters, 50 by default
 Must not touch: the database schema, authentication
 Expected files: OrdersController.cs, OrdersQuery.cs, related tests</pre></li>
         <li><p><strong>Approve or correct it.</strong> Claude then runs <code>kaldor intent freeze</code>.</p></li>
-        <li><p><strong>Confirm it</strong> from your own terminal, any time before Claude's first commit: <code>kaldor intent confirm</code>. Claude can freeze an intent, but only you can vouch for it, so commits wait for you.</p></li>
+        <li><p><strong>Confirm it</strong> from a terminal outside Claude Code, any time before Claude's first commit: <code>dnx Atypical.Kaldor intent confirm</code>, or <code>kaldor intent confirm</code> with the global tool. The <code>!</code> prefix in Claude Code has no terminal, and the confirmation needs one. Claude can freeze an intent, but only you can vouch for it, so commits wait for you.</p></li>
         <li><p><strong>Each commit is reviewed</strong>, in a few seconds. An accepted commit goes through; a refused one comes back to Claude.</p></li>
         <li><p><strong>Read the report</strong> when you want: intents, deviations, and the hunks worth your attention.</p>
 <pre class="report">$ kaldor report
@@ -298,7 +298,7 @@ Expected files: OrdersController.cs, OrdersQuery.cs, related tests</pre></li>
 kaldor intent amend --accept                                     <span class="c"># you, in your terminal</span></pre>
 
       <h3>When you disagree with the reviewer</h3>
-      <p>Force the exact staged diff through with <code>kaldor approve</code>, from your own terminal. <code>intent confirm</code>, <code>approve</code> and <code>amend --accept</code> are all refused to the agent twice over: the gate denies the command, and the command itself needs an interactive terminal.</p>
+      <p>Force the exact staged diff through with <code>kaldor approve</code>, from a terminal outside Claude Code (<code>dnx Atypical.Kaldor approve</code> without the global tool). <code>intent confirm</code>, <code>approve</code> and <code>amend --accept</code> are all refused to the agent twice over: the gate denies the command, and the command itself needs an interactive terminal.</p>
     </section>
 
     <section id="commands" aria-labelledby="commands-h">

@@ -24,7 +24,8 @@ conversation, so the intent must say everything the reviewer needs.
 
 3. Show the intent to the user and wait for their agreement or correction.
 4. Freeze it: `kaldor intent freeze`. From then on, edits are allowed.
-5. Ask the user to confirm it by running `kaldor intent confirm` in their own terminal. Commits are refused until
+5. Ask the user to confirm it by running `dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code
+   (the `!` prefix has no terminal, and `kaldor` is on PATH only inside Claude Code). Commits are refused until
    they do; you cannot run it yourself.
 
 ## Committing
@@ -44,9 +45,9 @@ If the work genuinely needs more than the intent allows, do not edit `.kaldor/in
 kaldor intent amend "Also add an index on orders.created_at: pagination is too slow without it."
 ```
 
-Then tell the user and ask them to run `kaldor intent amend --accept` in their own terminal. Only they can
+Then tell the user and ask them to run `dnx Atypical.Kaldor intent amend --accept` in a terminal outside Claude Code. Only they can
 accept it; until then, commits are reviewed against the original intent.
 
-If the user disagrees with a rejection, they can force the commit with `kaldor approve` in their own terminal.
+If the user disagrees with a rejection, they can force the commit with `dnx Atypical.Kaldor approve` in a terminal outside Claude Code.
 Never run `kaldor approve`, `kaldor intent confirm` or `kaldor intent amend --accept` yourself: all three are
 refused to you.

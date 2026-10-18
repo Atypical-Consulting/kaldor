@@ -85,7 +85,8 @@ static class Gate
     {
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
-            return "`kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` are reserved for the user, in their own terminal. Ask them.";
+            return "`kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` are reserved for the user. " +
+                   "Ask them to run it themselves as `dnx Atypical.Kaldor <command>` in a terminal outside Claude Code.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 
         foreach (var commit in found.Commits)
@@ -117,7 +118,7 @@ static class Gate
         if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
         if (state.ConfirmedHash != intentHash)
             return "The user has not confirmed the frozen intent yet. Show it to them and ask them to run " +
-                   "`kaldor intent confirm` in their own terminal, then commit again.";
+                   $"{Commands.ForUser("intent confirm")}, then commit again.";
         if (diff.Length > Claude.MaxDiffChars)
             return $"The staged diff is too large for one review ({diff.Length:N0} characters). Split it into smaller commits.";
 

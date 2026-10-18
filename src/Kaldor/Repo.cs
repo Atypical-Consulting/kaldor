@@ -63,10 +63,10 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
 }
 
 /// <summary>
-/// A reviewed or approved change. <paramref name="PatchId"/> identifies it once it is a commit (see <see cref="Repo.StagedPatchId"/>);
+/// A reviewed or approved change. <paramref name="PatchId"/> identifies it once it is a commit (see <see cref="Repo.NewPass"/>);
 /// for a merge commit the user approved it is the commit id. Null in states written by Kaldor 1.4.
 /// </summary>
-sealed record Pass(string DiffHash, string IntentHash, string By, string? PatchId = null);
+sealed record Pass(string DiffHash, string IntentHash, string By, string? PatchId = null, string? AmendPatchId = null);
 
 sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, List<string>? Preconfirmed = null, string? ReviewedTip = null)
 {
@@ -183,19 +183,34 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public string StagedDiff() => Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "-U5");
 
     // Everything that could make two printings of the same change differ: user config, renames, textconv, binary content.
-    static readonly string[] PatchFlags = ["--no-color", "--no-renames", "--binary", "--src-prefix=a/", "--dst-prefix=b/", "--no-textconv", "--no-ext-diff", "-U3"];
+    static readonly string[] PatchFlags =
+        ["--patch", "--no-color", "--no-renames", "--binary", "--src-prefix=a/", "--dst-prefix=b/", "--no-textconv", "--no-ext-diff", "--ignore-submodules=none", "-U3"];
+    static readonly string[] MetaFlags = ["--name-only", "--summary", "-z", "--no-renames", "--ignore-submodules=none"];
 
     /// <summary>
-    /// <c>git patch-id --verbatim</c> of the staged diff, which equals that of the commit it becomes. Null when nothing is
-    /// staged or no id could be computed.
+    /// The pass for the staged diff, with the identity of the commit it becomes, and the one it has if it is made with
+    /// <c>--amend</c> (the staged change on top of HEAD's own).
     /// </summary>
-    public string? StagedPatchId() => PatchIdOf(Proc.Git(Root, ["--no-replace-objects", "diff", "--cached", .. PatchFlags]));
+    public Pass NewPass(string diffHash, string intentHash, string by) =>
+        new(diffHash, intentHash, by, Nullable(ChangeId("diff", "--cached")),
+            Proc.Run("git", ["--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD^"], Root).Code == 0
+                ? Nullable(ChangeId("diff", "--cached", "HEAD^")) : null);
 
-    string? PatchIdOf(string diff)
+    static string? Nullable(string? id) => string.IsNullOrEmpty(id) ? null : id;
+
+    /// <summary>
+    /// <c>git patch-id --verbatim</c> of a change (<paramref name="cmd"/> is a git diff command and its arguments), plus a hash
+    /// of its paths and modes, which patch-id leaves out: a mode change has no content lines. <c>""</c> when the change is
+    /// empty, null when no id could be computed.
+    /// </summary>
+    string? ChangeId(params string[] cmd)
     {
-        if (diff.Length == 0) return null;
+        var diff = Proc.Git(Root, ["--no-replace-objects", cmd[0], .. PatchFlags, .. cmd[1..]]);
+        if (diff.Length == 0) return "";
         var (code, output, _) = Proc.Run("git", ["patch-id", "--verbatim"], Root, diff);
-        return code == 0 && output.Length > 0 ? output.Split(' ')[0] : null;
+        if (code != 0 || output.Length == 0) return null;
+        var meta = Proc.Git(Root, ["--no-replace-objects", cmd[0], .. MetaFlags, .. cmd[1..]]);
+        return output.Split(' ')[0] + ":" + Hash(meta)[7..23];
     }
 
     /// <summary>The commit id of HEAD, or null in a repository with no commit.</summary>
@@ -227,16 +242,16 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
             string id;
             if (parents.Length < 2)
             {
-                var diff = Proc.Git(Root, ["--no-replace-objects", "diff-tree", "-p", "--root", .. PatchFlags, sha]);
-                if (diff.Length == 0) continue; // changes nothing: nothing to review
-                id = PatchIdOf(diff) ?? "";
+                var change = ChangeId("diff-tree", "-r", "--root", "--no-commit-id", sha);
+                if (change == "") continue; // changes nothing: nothing to review
+                id = change ?? "";
             }
             else
             {
                 id = sha;
                 if (parents.Length == 2 && IsCleanMerge(sha, parents)) continue;
             }
-            if (id.Length > 0 && state.Passes.Any(p => p.PatchId == id)) continue;
+            if (id.Length > 0 && state.Passes.Any(p => p.PatchId == id || p.AmendPatchId == id)) continue;
             result.Add((sha, Proc.Git(Root, "--no-replace-objects", "show", "-s", "--format=%h %s", sha).Trim(), id));
         }
         return result;

@@ -799,6 +799,43 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
+    public void An_amended_commit_does_not_block()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "two");
+        G("add", "a.txt");
+        Assert.Equal(0, Commit("git commit --amend --no-edit").Code);
+        G("commit", "-q", "--amend", "--no-edit");
+        Stage("three");
+        Assert.Equal(0, Commit().Code);
+    }
+
+    [Fact]
+    public void A_reviewed_mode_change_does_not_cover_another_one()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        CommitReviewed("b.txt", "two");
+        G("update-index", "--chmod=+x", "a.txt");
+        Assert.Equal(0, Commit().Code);
+        G("commit", "-q", "-m", "chmod a");
+        G("update-index", "--chmod=+x", "b.txt");
+        G("commit", "-q", "-m", "chmod b, never reviewed");
+        Stage("four");
+        Assert.Equal(2, Commit().Code);
+    }
+
+    [Fact]
+    public void A_push_chained_after_a_command_that_adds_commits_is_refused()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        Assert.Equal(2, Commit("git cherry-pick abc && git push").Code);
+        Assert.Equal(0, Commit("git add a.txt && git commit -m x && git push").Code);
+    }
+
+    [Fact]
     public void Reviewed_then_committed_does_not_block()
     {
         FreezeIntent();

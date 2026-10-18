@@ -120,6 +120,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 - An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
 - An unreviewed commit is caught at the next commit or push through the Bash tool, not when it is made. A push from a script, a write to remote-tracking refs (`git update-ref refs/remotes/...`, or `git fetch . HEAD:refs/remotes/...`) and the first check in a new worktree (which trusts the history it finds) are out of reach.
+- Only `HEAD` is checked on a push: `git push origin other:main` is not. Reviews are recorded per worktree, so commits reviewed in one worktree and merged into another need your `kaldor approve` there. A rebase that changes a commit's context lines, or resolves a conflict, does too.
 - A staged diff over 600,000 characters is refused outright: split the commit.
 - When the reviewer fails or returns no verdict, the commit is blocked and the next attempt reviews again.
 

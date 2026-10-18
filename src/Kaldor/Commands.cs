@@ -343,7 +343,7 @@ static class Commands
         if (!ConfirmByHuman("Force this staged diff through without a passing review?")) return 1;
 
         var state = repo.LoadState();
-        state.Passes.Add(new Pass(diffHash, intentHash, "approve", repo.StagedPatchId()));
+        state.Passes.Add(repo.NewPass(diffHash, intentHash, "approve"));
         repo.SaveState(state with { IntentHash = state.IntentHash ?? intentHash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve", diffHash, intentHash, intent,
             Summary: $"Forced by {Environment.UserName}"));

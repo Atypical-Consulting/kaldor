@@ -29,11 +29,17 @@ static class CommandParser
         "symbolic-ref", "tag", "var", "worktree",
     ];
 
+    /// <summary>Git commands that can put commits on HEAD without <c>git commit</c> (aliases cannot shadow them).</summary>
+    static readonly HashSet<string> CommitAdders =
+        ["cherry-pick", "revert", "am", "rebase", "merge", "pull", "commit-tree", "update-ref", "reset", "checkout", "switch", "fast-import"];
+
     public sealed class Findings
     {
         public readonly List<CommitCall> Commits = [];
         /// <summary>The directories of the <c>git push</c> calls.</summary>
         public readonly List<string> Pushes = [];
+        /// <summary>True when the command also runs a git command that adds commits to HEAD (cherry-pick, rebase, ...).</summary>
+        public bool AddsCommits;
         public bool HumanOnly;
         /// <summary>Full paths the command writes or deletes, as far as the parser can tell.</summary>
         public readonly List<string> Writes = [];
@@ -173,6 +179,7 @@ static class CommandParser
             found.Commits.Add(new CommitCall(dir, skipsHooks || SkipsVerify(rest)));
         }
         else if (sub == "push") found.Pushes.Add(dir);
+        else if (CommitAdders.Contains(sub)) found.AddsCommits = true;
         else if (!Builtins.Contains(sub) && aliases(dir).TryGetValue(sub, out var expansion))
         {
             if (expansion.StartsWith('!')) Scan(expansion[1..], dir, aliases, found, depth + 1);

@@ -104,6 +104,10 @@ static partial class Gate
         }
         foreach (var dir in found.Pushes)
         {
+            // The check runs before the command does: commits it adds before pushing would go unseen.
+            if (found.AddsCommits && Repo.Find(dir) is { Enabled: true })
+                return "Run the push on its own: this command also changes HEAD (cherry-pick, rebase, merge, reset...), " +
+                       "and Kaldor checks the commits before the command runs.";
             var repo = Repo.Find(dir);
             if (repo is not { Enabled: true }) continue;
             var state = repo.LoadState();
@@ -158,9 +162,9 @@ static partial class Gate
         if (state.Passes.FindIndex(p => p.DiffHash == diffHash && p.IntentHash == intentHash) is var known and >= 0)
         {
             // A pass recorded before Kaldor tracked patch-ids: add it, or the commit it allows would look unreviewed.
-            if (state.Passes[known].PatchId is null && repo.StagedPatchId() is { } id)
+            if (state.Passes[known].PatchId is null)
             {
-                state.Passes[known] = state.Passes[known] with { PatchId = id };
+                state.Passes[known] = repo.NewPass(diffHash, intentHash, state.Passes[known].By);
                 repo.SaveState(state);
             }
             return null;
@@ -186,7 +190,7 @@ static partial class Gate
                 result.Deviations, result.Hunks, result.Summary, unconfirmed ? true : null));
             if (result.Passed)
             {
-                state.Passes.Add(new Pass(diffHash, intentHash, "review", repo.StagedPatchId()));
+                state.Passes.Add(repo.NewPass(diffHash, intentHash, "review"));
                 repo.SaveState(state);
                 return null;
             }

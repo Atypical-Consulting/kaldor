@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.2.1...v1.3.0) (2026-10-18)
+
+
+### Added
+
+* add kaldor intent wait so the agent notices the user's confirmation ([#32](https://github.com/Atypical-Consulting/kaldor/issues/32)) ([58be362](https://github.com/Atypical-Consulting/kaldor/commit/58be362a2ca70b2ba594eb2ac237368575ff4961))
+
 ## [1.2.1](https://github.com/Atypical-Consulting/kaldor/compare/v1.2.0...v1.2.1) (2026-10-18)
 
 

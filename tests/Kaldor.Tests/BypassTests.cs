@@ -64,6 +64,73 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(1, _reviews);
     }
 
+    void SetConfirm(string value) =>
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { Confirm = value }, Repo.Json));
+
+    [Fact]
+    public void Confirm_after_sends_an_unconfirmed_intent_to_the_reviewer()
+    {
+        SetConfirm("after");
+        FreezeIntent(confirm: false);
+        Stage();
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Assert.True(_repo.ReadLog().Single(e => e.Kind == "review").Unconfirmed);
+    }
+
+    [Fact]
+    public void Confirm_after_still_blocks_on_a_blocking_review()
+    {
+        SetConfirm("after");
+        FreezeIntent(confirm: false);
+        Stage();
+        _next = Block;
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("Unannounced cache", err);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("before")]
+    public void Confirm_before_or_absent_refuses_an_unconfirmed_intent(string? value)
+    {
+        if (value is not null) SetConfirm(value);
+        FreezeIntent(confirm: false);
+        Stage();
+        Assert.Equal(2, Commit().Code);
+        Assert.Equal(0, _reviews);
+    }
+
+    [Fact]
+    public void Report_marks_and_filters_unconfirmed_reviews()
+    {
+        _repo.Log(new LogEntry(DateTimeOffset.Now, "review", "pass", Unconfirmed: true));
+        _repo.Log(new LogEntry(DateTimeOffset.Now, "review", "pass"));
+        var all = new StringWriter();
+        var old = Console.Out;
+        try
+        {
+            Console.SetOut(all);
+            Commands.Report(_root, 10);
+            var both = all.ToString();
+            all.GetStringBuilder().Clear();
+            Commands.Report(_root, 10, unconfirmedOnly: true);
+            Assert.Equal(2, both.Split("ACCEPTED").Length - 1);
+            Assert.Equal(1, both.Split("UNCONFIRMED").Length - 1);
+            Assert.Equal(1, all.ToString().Split("ACCEPTED").Length - 1);
+        }
+        finally { Console.SetOut(old); }
+    }
+
+    [Fact]
+    public void Doctor_rejects_an_unknown_confirm_value()
+    {
+        SetConfirm("sometimes");
+        var (_, output, _) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "doctor"], _root);
+        Assert.Contains("FAIL  rules.json is valid", output);
+    }
+
     [Fact]
     public void Agent_cannot_confirm_the_intent()
     {

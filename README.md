@@ -93,6 +93,8 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 }
 ```
 
+**Unattended sessions.** Set `"confirm": "after"` in `.kaldor/rules.json` (the default is `"before"`) when nobody can run `kaldor intent confirm` during a session, for example under `auto-dev`. Commits on an unconfirmed intent then go to the independent reviewer instead of being refused, and each review is logged as unconfirmed. The review is kept; what moves to after the session is your check that the intent itself was right: `kaldor report --unconfirmed` lists those reviews. Only you can set it, since the agent cannot write `.kaldor/rules.json`; a change committed on a branch takes effect when that branch is checked out.
+
 `.kaldor/intent.md` is local and ignored by git. The verdicts, the frozen intent hash and the history live in the git directory (`.git/kaldor/`, one folder per worktree), so `git clean` and `git worktree remove` leave them alone and `kaldor report` shows every worktree. The agent can write `intent.md` only before the intent is frozen; its edit tools and the shell writes the gate recognises (redirections, `tee`, `cp`, `mv`, `rm`, `sed -i`, `Set-Content`…) are refused on everything else in `.kaldor/` and `.git/kaldor/`.
 
 ## What it guards against

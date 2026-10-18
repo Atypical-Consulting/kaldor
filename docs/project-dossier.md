@@ -185,6 +185,8 @@ Expected files: OrdersController.cs, OrdersQuery.cs, related tests
 }
 ```
 
+**Unattended mode.** `"confirm": "after"` in `rules.json` (default `"before"`; `kaldor doctor` rejects other values) lets commits on a frozen but unconfirmed intent go to the reviewer. The review still applies in full; only the human check of the intent is deferred. Such reviews are logged with `unconfirmed: true`, shown as `UNCONFIRMED` by `kaldor report`, and listed alone by `kaldor report --unconfirmed`. Only the user can set it, because the gate refuses agent writes to `.kaldor/rules.json`; a change committed on a branch applies once that branch is checked out. Threat model: the "Freezing an intent you never saw" defence does not hold in this mode by design. The reviewer still checks every diff against the frozen intent, but nobody vouched for the intent beforehand.
+
 **State** (`.git/kaldor/state.json`, local): the frozen intent hash and the (diff hash, intent hash) pairs that passed review or were approved. Reviews and approvals are logged one file each in `.git/kaldor/log/`. Kaldor 1.0 kept both in `.kaldor/`; they move on first use.
 
 **Verdict** (the reviewer's JSON output, never written by the agent):

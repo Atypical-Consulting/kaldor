@@ -31,6 +31,9 @@ conversation, so the intent must say everything the reviewer needs.
    as soon as the user has confirmed; then commit. Do not ask the user to tell you when they are done. If it times
    out, run it again, or check in with the user.
 
+If `kaldor intent freeze` says commits will not wait for confirmation (`"confirm": "after"` in `.kaldor/rules.json`, set by the
+user for unattended sessions), skip steps 5 and 6: commits are still reviewed, and the user checks the intent afterwards.
+
 ## Committing
 
 Stage and commit as usual. The commit waits for the review (up to a few minutes).

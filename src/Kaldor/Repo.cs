@@ -50,8 +50,11 @@ static class Proc
     }
 }
 
-sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, string[] BlockOn)
+sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, string[] BlockOn, string Confirm = "before")
 {
+    /// <summary>True when commits may be reviewed before the user confirms the intent (unattended sessions).</summary>
+    public bool ConfirmAfter => Confirm == "after";
+
     public static readonly Rules Default = new(
         ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
         ["**/*.md"],
@@ -75,7 +78,8 @@ sealed record ReviewResult(string Verdict, string[] Deviations, Hunk[] Hunks, st
 
 sealed record LogEntry(
     DateTimeOffset At, string Kind, string? Verdict = null, string? DiffHash = null, string? IntentHash = null,
-    string? Intent = null, string[]? Deviations = null, Hunk[]? Hunks = null, string? Summary = null);
+    string? Intent = null, string[]? Deviations = null, Hunk[]? Hunks = null, string? Summary = null,
+    bool? Unconfirmed = null);
 
 /// <summary>
 /// A git repository: <c>.kaldor/</c> in the work tree holds the rules and the intent; the state and the history live

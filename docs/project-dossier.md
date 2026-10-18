@@ -131,6 +131,7 @@ Nine commands cover v1; day to day, you only type `kaldor report`, and `kaldor a
 | --- | --- | --- |
 | `kaldor init` | You, once | Creates `.kaldor/`, the default rules and the `.gitignore` entry |
 | `kaldor intent freeze` | The agent | Freezes the current intent and records its hash |
+| `kaldor intent wait` | The agent | Waits, read-only, until you have confirmed the intent, so you never have to report it |
 | `kaldor intent confirm` | You only | Confirms the frozen intent; until then the agent's commits are refused |
 | `kaldor intent amend` | The agent proposes, you accept | Adds a dated amendment; it only takes effect after your `--accept` |
 | `kaldor gate` | The hook | Hook entry point: detects the commit, computes the hashes, launches the reviewer, returns the verdict |

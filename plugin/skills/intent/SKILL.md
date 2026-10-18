@@ -27,6 +27,9 @@ conversation, so the intent must say everything the reviewer needs.
 5. Ask the user to confirm it by running `dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code
    (the `!` prefix has no terminal, and `kaldor` is on PATH only inside Claude Code). Commits are refused until
    they do; you cannot run it yourself.
+6. Right away, run `kaldor intent wait` in the background and keep working on the edits meanwhile. It returns
+   as soon as the user has confirmed; then commit. Do not ask the user to tell you when they are done. If it times
+   out, run it again, or check in with the user.
 
 ## Committing
 

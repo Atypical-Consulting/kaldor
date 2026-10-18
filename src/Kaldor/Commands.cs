@@ -92,11 +92,47 @@ static class Commands
         repo.SaveState(state with { IntentHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", null, null, hash, intent, null, null, null));
         Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
-                          "commits wait for it, edits do not.");
+                          "commits wait for it, edits do not. Run `kaldor intent wait` in the background to continue as soon as they do.");
         return 0;
     }
 
     /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
+    /// <summary>
+    /// For the agent: returns as soon as the user has confirmed the frozen intent, so nobody has to report it.
+    /// Read-only; exit 1 when there is nothing to wait for, or on timeout.
+    /// </summary>
+    public static int WaitForConfirmation(string cwd, TimeSpan timeout, TimeSpan? poll = null)
+    {
+        var repo = RequireRepo(cwd);
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            State state;
+            try { state = repo.LoadState(); }
+            catch (Exception e) when (e is JsonException or IOException)
+            {
+                Thread.Sleep(poll ?? TimeSpan.FromSeconds(1)); // caught the user's terminal mid-write: read again
+                continue;
+            }
+            var intent = repo.ReadIntent();
+            if (state.IntentHash is null || intent is null) throw new KaldorException("No frozen intent to wait for.");
+            if (Repo.Hash(intent) != state.IntentHash)
+                throw new KaldorException("The intent changed after it was frozen; restore it or freeze it again first.");
+            if (state.ConfirmedHash == state.IntentHash)
+            {
+                Console.WriteLine("Intent confirmed.");
+                return 0;
+            }
+            if (DateTime.UtcNow >= deadline)
+            {
+                Console.Error.WriteLine($"Kaldor: the intent is still waiting for the user's confirmation " +
+                                        $"({ForUser("intent confirm")}). Run `kaldor intent wait` again, or check in with them.");
+                return 1;
+            }
+            Thread.Sleep(poll ?? TimeSpan.FromSeconds(1));
+        }
+    }
+
     public static int ConfirmIntent(string cwd)
     {
         RequireTerminal("intent confirm");

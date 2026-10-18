@@ -118,7 +118,8 @@ static class Gate
         if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
         if (state.ConfirmedHash != intentHash)
             return "The user has not confirmed the frozen intent yet. Show it to them and ask them to run " +
-                   $"{Commands.ForUser("intent confirm")}, then commit again.";
+                   $"{Commands.ForUser("intent confirm")}. Run `kaldor intent wait` (in the background) to know when they have, " +
+                   "then commit again.";
         if (diff.Length > Claude.MaxDiffChars)
             return $"The staged diff is too large for one review ({diff.Length:N0} characters). Split it into smaller commits.";
 

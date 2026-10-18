@@ -16,7 +16,7 @@ static class CommandParser
     static readonly HashSet<string> Prefixes =
         ["sudo", "command", "env", "exec", "time", "nohup", "nice", "builtin", "!", "{", "if", "then", "else", "elif", "do", "while", "until"];
 
-    static readonly HashSet<string> Shells = ["sh", "bash", "zsh", "dash", "ksh", "pwsh", "powershell"];
+    static readonly HashSet<string> Shells = ["sh", "bash", "zsh", "dash", "ksh", "fish", "pwsh", "powershell"];
 
     // Git refuses aliases that shadow a builtin, so only an unknown subcommand can be an alias.
     static readonly HashSet<string> Builtins =
@@ -84,13 +84,27 @@ static class CommandParser
     /// <summary><c>env -i / -u CLAUDECODE / --unset</c> and <c>exec -c</c>, reading the words after the one at <paramref name="at"/>.</summary>
     static bool ClearsEnvironment(List<string> words, int at)
     {
-        var flag = Path.GetFileName(words[at]) == "exec" ? 'c' : 'i';
+        var exec = Path.GetFileName(words[at]) == "exec";
+        // An unexpanded $ where a name goes could be CLAUDECODE.
+        static bool IsClaudeCodeName(string? w) => w is "CLAUDECODE" || w?.Contains('$') == true;
         for (var j = at + 1; j < words.Count && (words[j].StartsWith('-') || IsAssignment(words[j])); j++)
         {
             var w = words[j];
-            if (IsClaudeCodeAssignment(w) || w is "--ignore-environment" or "--unset=CLAUDECODE" or "-uCLAUDECODE") return true;
-            if (w is "-u" or "--unset" && words.ElementAtOrDefault(j + 1) == "CLAUDECODE") return true;
-            if (w.Length > 1 && w[0] == '-' && w[1] != '-' && w[1..].Contains(flag)) return true;
+            if (IsClaudeCodeAssignment(w) || w is "--ignore-environment") return true;
+            if (w.StartsWith("--unset=") && IsClaudeCodeName(w[8..])) return true;
+            if (w == "--unset" && IsClaudeCodeName(words.ElementAtOrDefault(j + 1))) return true;
+            if (w.Length < 2 || w[0] != '-' || w[1] == '-') { if (w is "--unset" or "--chdir") j++; continue; }
+            // A short-flag cluster: -i clears, -u/-C/-S take a value (the rest of the word, else the next word).
+            for (var c = 1; c < w.Length; c++)
+            {
+                if (w[c] == (exec ? 'c' : 'i')) return true;
+                if (w[c] is 'u' or 'C' or 'S' && !exec)
+                {
+                    if (w[c] == 'u' && IsClaudeCodeName(c + 1 < w.Length ? w[(c + 1)..] : words.ElementAtOrDefault(j + 1))) return true;
+                    if (c + 1 == w.Length) j++;
+                    break;
+                }
+            }
         }
         return false;
     }
@@ -99,9 +113,11 @@ static class CommandParser
     // `at`, `batch`, `crontab` and `systemd-run` start the command from a manager that does not pass the environment on.
     static bool ClearsClaudeCode(string name, List<string> args) => name switch
     {
-        "unset" => args.Contains("CLAUDECODE"),
-        "export" or "declare" or "typeset" => args.Any(IsClaudeCodeAssignment) || (args.Contains("-n") && args.Contains("CLAUDECODE")),
-        "systemd-run" or "at" or "batch" => true,
+        "unset" => args.Any(a => a == "CLAUDECODE" || a.Contains('$')),
+        "export" or "declare" or "typeset" or "readonly" or "local" =>
+            args.Any(IsClaudeCodeAssignment) ||
+            (args.Any(a => a == "CLAUDECODE" || a.Contains('$')) && args.Any(a => a == "+x" || (a.Length > 1 && a[0] == '-' && a[1] != '-' && a.Contains('n')))),
+        "systemd-run" or "at" or "batch" or "tmux" or "screen" or "hyprctl" or "swaymsg" or "machinectl" => true,
         "crontab" => !args.Contains("-l"),
         _ => false,
     };
@@ -142,7 +158,7 @@ static class CommandParser
             }
             else if (Shells.Contains(name))
             {
-                var flag = rest.FindIndex(a => a is "-c" or "-lc" or "-ic" || a.Equals("-Command", StringComparison.OrdinalIgnoreCase));
+                var flag = rest.FindIndex(a => a.Length > 1 && a[0] == '-' && a[1] != '-' && a[1..].All(char.IsAsciiLetter) && a.Contains('c') && !a.Contains('C') || a.Equals("-Command", StringComparison.OrdinalIgnoreCase));
                 if (flag >= 0 && flag + 1 < rest.Count) Scan(rest[flag + 1], cwd, aliases, found, depth + 1);
             }
             else if (name is "eval" or "invoke-expression" or "iex")

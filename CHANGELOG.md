@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.3.0...v1.4.0) (2026-10-18)
+
+
+### Added
+
+* kaldor doctor says when a newer Kaldor is published ([#38](https://github.com/Atypical-Consulting/kaldor/issues/38)) ([c4634dd](https://github.com/Atypical-Consulting/kaldor/commit/c4634dd0c5be8ac7e3f3db7e53423e4ecda3aeb5))
+
+
+### Changed
+
+* simplify the codebase without changing behavior ([#39](https://github.com/Atypical-Consulting/kaldor/issues/39)) ([5bef6b7](https://github.com/Atypical-Consulting/kaldor/commit/5bef6b7e7831eceb19f55a24038bf27cba594c94))
+
+
+### Documentation
+
+* explain how a Kaldor intent differs from plan mode ([#34](https://github.com/Atypical-Consulting/kaldor/issues/34)) ([b045c08](https://github.com/Atypical-Consulting/kaldor/commit/b045c08b13f24e17ef53209be7bf56c7d8943b62))
+* point the site's step 6 to the log in .git/kaldor/ ([#36](https://github.com/Atypical-Consulting/kaldor/issues/36)) ([c0d169c](https://github.com/Atypical-Consulting/kaldor/commit/c0d169cad9ed0efdc8479366028cc55812569fd6))
+
 ## [1.3.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.2.1...v1.3.0) (2026-10-18)
 
 

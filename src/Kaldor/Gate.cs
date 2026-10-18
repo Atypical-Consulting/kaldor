@@ -168,6 +168,10 @@ static partial class Gate
         }.ToJsonString();
     }
 
+    /// <summary>The staged change under <c>.kaldor/</c>, in full (the reviewer's safe flags, nothing cut).</summary>
+    static string OwnFilesDiff(Repo repo) =>
+        Proc.GitSafe(repo.Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--", ":(top).kaldor/");
+
     /// <summary>What a ticket for <paramref name="command"/> vouches for, and the text the prompt shows; null when there is nothing to vouch for.</summary>
     static (string Subject, string Shown)? Vouched(Repo repo, string command)
     {
@@ -202,7 +206,8 @@ static partial class Gate
                 var deviations = repo.LatestReview(e => e.DiffHash == diffHash)?.Deviations ?? [];
                 return (Commands.DiffSubject(Repo.Hash(intent), diffHash),
                         "Kaldor: force this staged diff through without a passing review?\n\n" + Commands.Printable(stat.TrimEnd()) +
-                        (deviations.Length == 0 ? "" : "\n\nLatest review:\n" + string.Join('\n', deviations.Select(d => "- " + Commands.Printable(d)))));
+                        (deviations.Length == 0 ? "" : "\n\nLatest review:\n" + string.Join('\n', deviations.Select(d => "- " + Commands.Printable(d)))) +
+                        (repo.StagedKaldorChange() ? "\n\nChanges to Kaldor's own files:\n" + Commands.Printable(OwnFilesDiff(repo).TrimEnd()) : ""));
             }
         }
     }

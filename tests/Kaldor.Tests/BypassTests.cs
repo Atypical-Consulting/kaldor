@@ -690,6 +690,25 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
+    public void The_approve_prompt_shows_staged_kaldor_changes_in_full()
+    {
+        FreezeIntent();
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        var reason = Asked(AskHook("kaldor approve")).Reason;
+        Assert.Contains("Changes to Kaldor's own files:", reason);
+        Assert.Contains("\"block_on\": []", reason);
+    }
+
+    [Fact]
+    public void The_approve_prompt_has_no_kaldor_section_for_an_ordinary_file()
+    {
+        FreezeIntent();
+        Stage("one");
+        Assert.DoesNotContain("Changes to Kaldor's own files", Asked(AskHook("kaldor approve")).Reason);
+    }
+
+    [Fact]
     public void An_approve_ticket_is_bound_to_the_staged_diff()
     {
         FreezeIntent();

@@ -59,7 +59,7 @@ Work with Claude Code as usual. Kaldor steps in twice:
 - **Confirm the intent** any time before Claude's first commit: Claude runs `kaldor intent confirm` and Claude Code asks you to allow it, showing the frozen intent; allowing it is your confirmation. Or run `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
 - **At each commit**, the reviewer runs (a few seconds). Accepted commits go through; rejected ones come back to Claude with the list of deviations.
 
-Your commands, from a terminal outside Claude Code. Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`. For `intent confirm`, `approve` and `intent amend --accept` you can also ask Claude to run it: Claude Code will ask you to allow it, showing the intent, the staged diff or the amendment. The `!` prefix still cannot run them: it has no terminal and no prompt.
+Your commands, from a terminal outside Claude Code. Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`. For `intent confirm`, `approve` and `intent amend --accept` you can also ask Claude to run it: Claude Code will ask you to allow it, showing the intent, the staged diff (changes under `.kaldor/` in full) or the amendment. The `!` prefix still cannot run them: it has no terminal and no prompt.
 
 | Command | What it does |
 | --- | --- |

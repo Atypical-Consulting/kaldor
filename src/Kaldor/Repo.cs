@@ -42,6 +42,15 @@ static class Proc
         return (p.ExitCode, output.Result, err.Result);
     }
 
+    /// <summary>
+    /// What Kaldor's own reads switch off, whatever the repository, user or environment configuration says: <c>core.fsmonitor</c>
+    /// runs a program the agent may have written, and <c>core.attributesFile</c> can hide a change (see <see cref="Repo.StagedDiff"/>).
+    /// </summary>
+    public static readonly string[] Safe =
+        ["-c", "core.fsmonitor=false", "-c", "core.attributesFile=" + (OperatingSystem.IsWindows() ? "NUL" : "/dev/null")];
+
+    public static string GitSafe(string cwd, params string[] args) => Git(cwd, [.. Safe, .. args]);
+
     public static string Git(string cwd, params string[] args)
     {
         var (code, output, err) = Run("git", args, cwd);
@@ -206,8 +215,39 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public static string Hash(string text) =>
         "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
-    /// <summary>The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE.</summary>
-    public string StagedDiff() => Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "-U5");
+    /// <summary>True when git would run Kaldor's hook: it is the one at <see cref="HookPath"/> and, outside Windows, executable (git skips a hook that is not).</summary>
+    public bool HookRuns => HookInstalled && (OperatingSystem.IsWindows() || (File.GetUnixFileMode(HookPath) & UnixFileMode.UserExecute) != 0);
+
+    /// <summary>
+    /// The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE. Textconv and external
+    /// diff drivers are off. A text file that an attribute marks <c>-diff</c> or <c>binary</c> (<c>.git/info/attributes</c> cannot be
+    /// switched off) is printed as text, so it is not reduced to <c>Binary files differ</c>; a file that really holds NUL bytes stays binary.
+    /// </summary>
+    public string StagedDiff()
+    {
+        string[] flags = ["--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none"];
+        var hidden = HiddenText(flags);
+        var diff = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "-U5", "--", .. hidden.Select(p => ":(exclude,literal)" + p)]);
+        if (hidden.Count == 0) return diff;
+        return diff + Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--text", "-U5", "--", .. hidden.Select(p => ":(literal)" + p)]);
+    }
+
+    /// <summary>The staged paths printed as binary (numstat <c>-</c>) although neither the staged nor the committed content has a NUL byte.</summary>
+    List<string> HiddenText(string[] flags)
+    {
+        var fields = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--numstat", "--no-renames", "-z"]).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var hidden = new List<string>();
+        foreach (var f in fields.Where(f => f.StartsWith("-\t-\t", StringComparison.Ordinal)))
+        {
+            var path = f[4..];
+            // ponytail: reads the whole blob to test its first 8000 bytes; a very large binary costs its size on each check.
+            var (code, blob, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "cat-file", "blob", ":" + path], Root);
+            if (code != 0) (_, blob, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "cat-file", "blob", "HEAD:" + path], Root);
+            // The test git itself uses for binary content: a NUL byte in the first 8000.
+            if (!blob.AsSpan(0, Math.Min(8000, blob.Length)).Contains('\0')) hidden.Add(path);
+        }
+        return hidden;
+    }
 
     // Everything that could make two printings of the same change differ: user config, renames, textconv, binary content.
     static readonly string[] PatchFlags =
@@ -221,7 +261,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public Pass NewPass(string diffHash, string intentHash, string by)
     {
         var pass = new Pass(diffHash, intentHash, by, Nullable(ChangeId("diff", "--cached")),
-            Proc.Run("git", ["--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD^"], Root).Code == 0
+            Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD^"], Root).Code == 0
                 ? Nullable(ChangeId("diff", "--cached", "HEAD^")) : null);
         AddReviewed([pass.PatchId, pass.AmendPatchId]); // for every worktree, not only this one
         return pass;
@@ -236,18 +276,18 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     /// </summary>
     string? ChangeId(params string[] cmd)
     {
-        var diff = Proc.Git(Root, ["--no-replace-objects", cmd[0], .. PatchFlags, .. cmd[1..]]);
+        var diff = Proc.GitSafe(Root, ["--no-replace-objects", cmd[0], .. PatchFlags, .. cmd[1..]]);
         if (diff.Length == 0) return "";
-        var (code, output, _) = Proc.Run("git", ["patch-id", "--verbatim"], Root, diff);
+        var (code, output, _) = Proc.Run("git", [.. Proc.Safe, "patch-id", "--verbatim"], Root, diff);
         if (code != 0 || output.Length == 0) return null;
-        var meta = Proc.Git(Root, ["--no-replace-objects", cmd[0], .. MetaFlags, .. cmd[1..]]);
+        var meta = Proc.GitSafe(Root, ["--no-replace-objects", cmd[0], .. MetaFlags, .. cmd[1..]]);
         return output.Split(' ')[0] + ":" + Hash(meta)[7..23];
     }
 
     /// <summary>The commit id of HEAD, or null in a repository with no commit.</summary>
     public string? Head()
     {
-        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD"], Root);
+        var (code, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD"], Root);
         return code == 0 ? output.Trim() : null;
     }
 
@@ -271,7 +311,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         var reviewed = LoadReviewed();
         var accepted = new HashSet<string>(reviewed.PatchIds);
         foreach (var p in LoadState().Passes) { accepted.Add(p.PatchId ?? ""); accepted.Add(p.AmendPatchId ?? ""); }
-        var lines = Proc.Git(Root, ["--no-replace-objects", "rev-list", "--reverse", "--parents", .. from, "--not", .. ExistingCommits([.. reviewed.Baseline, .. reviewed.ApprovedTips]), "--remotes"])
+        var lines = Proc.GitSafe(Root, ["--no-replace-objects", "rev-list", "--reverse", "--parents", .. from, "--not", .. ExistingCommits([.. reviewed.Baseline, .. reviewed.ApprovedTips]), "--remotes"])
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
         foreach (var line in lines)
         {
@@ -290,14 +330,14 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
                 if (parents.Length == 2 && IsCleanMerge(sha, parents)) continue;
             }
             if (id.Length > 0 && accepted.Contains(id)) continue;
-            result.Add((sha, Proc.Git(Root, "--no-replace-objects", "show", "-s", "--format=%h %s", sha).Trim(), id));
+            result.Add((sha, Proc.GitSafe(Root, "--no-replace-objects", "show", "-s", "--format=%h %s", sha).Trim(), id));
         }
         return result;
     }
 
     /// <summary>The names of the local branches and tags that contain <paramref name="sha"/>, for the refusal message.</summary>
     public string[] RefsContaining(string sha) =>
-        Proc.Git(Root, "for-each-ref", "--contains", sha, "--format=%(refname:short)", "refs/heads", "refs/tags")
+        Proc.GitSafe(Root, "for-each-ref", "--contains", sha, "--format=%(refname:short)", "refs/heads", "refs/tags")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
     // A commit that no longer exists (garbage collected) bounds nothing: more is checked, never less.
@@ -305,7 +345,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     {
         var list = ids.Distinct().ToList();
         if (list.Count == 0) return [];
-        var (_, output, _) = Proc.Run("git", ["--no-replace-objects", "cat-file", "--batch-check=%(objectname) %(objecttype)"], Root,
+        var (_, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "cat-file", "--batch-check=%(objectname) %(objecttype)"], Root,
             string.Join('\n', list.Select(i => i + "^{commit}")) + "\n");
         return output.Split('\n').Where(l => l.EndsWith(" commit")).Select(l => l.Split(' ')[0]).ToList();
     }
@@ -341,7 +381,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     void Seed(Reviewed r)
     {
         r.Seeded = true;
-        r.Baseline = Proc.Git(Root, "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/tags", "refs/remotes")
+        r.Baseline = Proc.GitSafe(Root, "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/tags", "refs/remotes")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries).Distinct().ToList();
         var dirs = new List<string> { CommonStateDir };
         var linked = Path.Combine(CommonStateDir, "worktrees");
@@ -360,8 +400,8 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     bool IsCleanMerge(string sha, string[] parents)
     {
-        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "merge-tree", "--write-tree", parents[0], parents[1]], Root);
-        return code == 0 && output.Split('\n')[0] == Proc.Git(Root, "--no-replace-objects", "rev-parse", sha + "^{tree}").Trim();
+        var (code, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "merge-tree", "--write-tree", parents[0], parents[1]], Root);
+        return code == 0 && output.Split('\n')[0] == Proc.GitSafe(Root, "--no-replace-objects", "rev-parse", sha + "^{tree}").Trim();
     }
 
     /// <summary>Records the user's approval of <paramref name="commits"/>, for every worktree.</summary>
@@ -375,24 +415,24 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     /// <summary>True when the work tree has changes outside <c>.kaldor/</c>: a task is in progress.</summary>
     public bool TaskInProgress() =>
-        Proc.Git(Root, "status", "--porcelain", "-uall")
+        Proc.GitSafe(Root, "status", "--porcelain", "-uall")
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Any(line => line.Length > 3 && !line[3..].Trim('"').StartsWith(".kaldor/", StringComparison.Ordinal));
 
     /// <summary><c>.kaldor/rules.json</c> as committed at HEAD, or null when HEAD has none.</summary>
     public string? CommittedRules()
     {
-        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "show", "HEAD:.kaldor/rules.json"], Root);
+        var (code, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "show", "HEAD:.kaldor/rules.json"], Root);
         return code == 0 ? output : null;
     }
 
     /// <summary>True when a local branch or remote-tracking ref has <c>.kaldor/rules.json</c> at its tip.</summary>
     bool AnyRefHasRules()
     {
-        var (code, refs, _) = Proc.Run("git", ["--no-replace-objects", "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes"], Root);
+        var (code, refs, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes"], Root);
         if (code != 0 || refs.Length == 0) return false;
         var query = string.Concat(refs.Split('\n', StringSplitOptions.RemoveEmptyEntries).Distinct().Select(sha => sha.Trim() + ":.kaldor/rules.json\n"));
-        var (c2, output, _) = Proc.Run("git", ["--no-replace-objects", "cat-file", "--batch-check"], Root, query);
+        var (c2, output, _) = Proc.Run("git", [.. Proc.Safe, "--no-replace-objects", "cat-file", "--batch-check"], Root, query);
         return c2 == 0 && output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(l => !l.TrimEnd().EndsWith(" missing"));
     }
 
@@ -407,7 +447,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     /// <summary>True when the staged changes touch anything in <c>.kaldor/</c>.</summary>
     public bool StagedKaldorChange() =>
-        Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--name-only", "--", ":(top).kaldor/").Length > 0;
+        Proc.GitSafe(Root, "--no-replace-objects", "diff", "--cached", "--name-only", "--", ":(top).kaldor/").Length > 0;
 
     public State LoadState() =>
         File.Exists(StatePath) ? JsonSerializer.Deserialize<State>(File.ReadAllText(StatePath), Json) ?? State.Empty : State.Empty;

@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/Atypical-Consulting/kaldor/compare/v1.2.0...v1.2.1) (2026-10-18)
+
+
+### Fixed
+
+* give the user commands they can run, and refuse without a terminal first ([#30](https://github.com/Atypical-Consulting/kaldor/issues/30)) ([bc594dc](https://github.com/Atypical-Consulting/kaldor/commit/bc594dcb40a0820021a6a34217abf689e3e48b13))
+* tell the user to commit the .kaldor/ setup themselves ([#27](https://github.com/Atypical-Consulting/kaldor/issues/27)) ([4712302](https://github.com/Atypical-Consulting/kaldor/commit/47123026364c7d6a1a3ee559b364e78ca92b0731))
+
 ## [1.2.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.1.1...v1.2.0) (2026-10-18)
 
 

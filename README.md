@@ -110,7 +110,8 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | Rewriting the intent | Frozen by hash; changes go through an amendment only you can accept |
 | Changing code after review | Verdicts are bound to the hash of the staged diff |
 | `git -C`, `cd x &&`, `bash -c`, aliases | The hook parses the command line itself |
-| Committing from a script | The git pre-commit hook runs the same check for any commit made inside Claude Code |
+| Committing from a script | The git pre-commit hook runs the same check for any commit made with `git commit` inside Claude Code; other ways of making a commit are covered by the history check below |
+| `git cherry-pick`, `revert`, `am`, `rebase`, `merge`, `commit-tree` + `update-ref` | Not refused, but checked afterwards: at the next commit or push through the Bash tool, a commit on `HEAD` with no recorded review (matched by `git patch-id`) is refused until you run `kaldor approve`. Commits from remote-tracking branches, rebased reviewed commits and clean merges pass |
 | `--no-verify`, `core.hooksPath` | Refused |
 | Breaking the hook | `onFailure: "block"`: a failing or timed-out hook blocks |
 
@@ -118,6 +119,8 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 
 - An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
+- An unreviewed commit is caught at the next commit or push through the Bash tool, not when it is made. A push from a script, a write to remote-tracking refs (`git update-ref refs/remotes/...`, or `git fetch . HEAD:refs/remotes/...`) and the first check in a new worktree (which trusts the history it finds) are out of reach.
+- Only `HEAD` is checked on a push: `git push origin other:main` is not. Reviews are recorded per worktree, so commits reviewed in one worktree and merged into another need your `kaldor approve` there. A rebase that changes a commit's context lines, or resolves a conflict, does too.
 - A staged diff over 600,000 characters is refused outright: split the commit.
 - When the reviewer fails or returns no verdict, the commit is blocked and the next attempt reviews again.
 

@@ -688,4 +688,282 @@ public sealed class BypassTests : IDisposable
         var input = JsonSerializer.Serialize(new { cwd = _root, tool_name = "Bash", tool_input = new { command = "git commit" } });
         Assert.Equal(0, Gate.Run(input, TextWriter.Null, FakeReview, new Dictionary<string, string?> { ["KALDOR_REVIEWING"] = "1" }));
     }
+
+    // ---- commits that skipped `git commit` (#45) ----
+
+    void G(params string[] args) => Proc.Git(_root, args);
+
+    /// <summary>A reviewed commit through the gate, as `git commit` would make it.</summary>
+    void CommitReviewed(string file, string content, string? command = null)
+    {
+        File.WriteAllText(Path.Combine(_root, file), content);
+        G("add", file);
+        Assert.Equal(0, Commit().Code);
+        G("commit", "-q", "-m", "add " + file);
+    }
+
+    /// <summary>The first commit, so that the reviewed tip is set; then a commit made some other way.</summary>
+    string Bypass(string kind)
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        switch (kind)
+        {
+            case "commit-tree":
+                File.WriteAllText(Path.Combine(_root, "b.txt"), "b");
+                G("add", "b.txt");
+                G("update-ref", "HEAD", G2("commit-tree", G2("write-tree"), "-p", "HEAD", "-m", "x"));
+                break;
+            case "cherry-pick":
+                G("cherry-pick", Side());
+                break;
+            case "cherry-pick of a stash":
+                File.WriteAllText(Path.Combine(_root, "b.txt"), "b");
+                G("add", "b.txt");
+                G("stash", "push", "-q");
+                G("cherry-pick", "-m1", "stash@{0}");
+                break;
+            case "revert":
+                G("revert", "--no-edit", "HEAD");
+                break;
+            case "am":
+                var file = Path.Combine(Path.GetTempPath(), "p-" + Guid.NewGuid().ToString("N") + ".patch");
+                File.WriteAllText(file, G2("format-patch", "--stdout", "-1", Side()) + "\n");
+                G("am", file);
+                File.Delete(file);
+                break;
+        }
+        return G2("rev-parse", "--short", "HEAD");
+    }
+
+    string G2(params string[] args) => Proc.Git(_root, args).Trim();
+
+    /// <summary>A commit on another branch, HEAD back on main.</summary>
+    string Side()
+    {
+        G("checkout", "-q", "-b", "side");
+        File.WriteAllText(Path.Combine(_root, "s.txt"), "s");
+        G("add", "s.txt");
+        G("commit", "-q", "-m", "side");
+        var sha = G2("rev-parse", "HEAD");
+        G("checkout", "-q", "main");
+        return sha;
+    }
+
+    [Theory]
+    [InlineData("commit-tree")]
+    [InlineData("cherry-pick")]
+    [InlineData("cherry-pick of a stash")]
+    [InlineData("revert")]
+    [InlineData("am")]
+    public void Commits_made_without_git_commit_are_refused(string kind)
+    {
+        var sha = Bypass(kind);
+        Stage("two");
+        var reviews = _reviews;
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains(sha, err);
+        Assert.Equal(reviews, _reviews);
+        Assert.Equal(2, Commit("git push").Code);
+    }
+
+    [Fact]
+    public void Pre_commit_check_refuses_the_same()
+    {
+        var sha = Bypass("cherry-pick");
+        Stage("two");
+        var err = new StringWriter();
+        Assert.Equal(1, Commands.Check(_root, FakeReview, isAgent: true, err));
+        Assert.Contains(sha, err.ToString());
+    }
+
+    [Theory]
+    [InlineData("diff.mnemonicPrefix")]
+    [InlineData("diff.noprefix")]
+    [InlineData("diff.external")]
+    [InlineData("diff.renames")]
+    public void Git_diff_config_does_not_make_reviewed_commits_look_unreviewed(string key)
+    {
+        G("config", key, key == "diff.external" ? "false" : "true");
+        FreezeIntent();
+        File.WriteAllText(Path.Combine(_root, "old.txt"), "same\nlines\nhere\nfor\nrename\ndetection\n");
+        G("add", "old.txt");
+        Assert.Equal(0, Commit().Code);
+        G("commit", "-q", "-m", "old");
+        G("mv", "old.txt", "new.txt");
+        Assert.Equal(0, Commit().Code);
+        G("commit", "-q", "-m", "rename");
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
+    }
+
+    [Fact]
+    public void An_amended_commit_does_not_block()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "two");
+        G("add", "a.txt");
+        Assert.Equal(0, Commit("git commit --amend --no-edit").Code);
+        G("commit", "-q", "--amend", "--no-edit");
+        Stage("three");
+        Assert.Equal(0, Commit().Code);
+    }
+
+    [Fact]
+    public void A_reviewed_mode_change_does_not_cover_another_one()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        CommitReviewed("b.txt", "two");
+        G("update-index", "--chmod=+x", "a.txt");
+        Assert.Equal(0, Commit().Code);
+        G("commit", "-q", "-m", "chmod a");
+        G("update-index", "--chmod=+x", "b.txt");
+        G("commit", "-q", "-m", "chmod b, never reviewed");
+        Stage("four");
+        Assert.Equal(2, Commit().Code);
+    }
+
+    [Fact]
+    public void A_push_chained_after_a_command_that_adds_commits_is_refused()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        Assert.Equal(2, Commit("git cherry-pick abc && git push").Code);
+        Assert.Equal(0, Commit("git add a.txt && git commit -m x && git push").Code);
+    }
+
+    [Fact]
+    public void Reviewed_then_committed_does_not_block()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        CommitReviewed("b.txt", "two");
+        Assert.Equal(0, Commit("git push").Code);
+    }
+
+    [Fact]
+    public void First_check_trusts_existing_history()
+    {
+        Side();
+        G("cherry-pick", G2("rev-parse", "side"));
+        FreezeIntent();
+        Stage();
+        Assert.Null(_repo.LoadState().ReviewedTip);
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(G2("rev-parse", "HEAD"), _repo.LoadState().ReviewedTip);
+    }
+
+    [Fact]
+    public void Old_state_files_without_patch_ids_still_load()
+    {
+        Directory.CreateDirectory(_repo.StateDir);
+        File.WriteAllText(_repo.StatePath, "{\"intent_hash\":\"h\",\"passes\":[{\"diff_hash\":\"d\",\"intent_hash\":\"h\",\"by\":\"review\"}]}");
+        var state = _repo.LoadState();
+        Assert.Null(state.Passes[0].PatchId);
+        Assert.Null(state.ReviewedTip);
+    }
+
+    [Fact]
+    public void Rebasing_reviewed_commits_does_not_block()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        G("checkout", "-q", "-b", "feat");
+        CommitReviewed("f.txt", "f");
+        G("checkout", "-q", "main");
+        File.WriteAllText(Path.Combine(_root, "m.txt"), "m");
+        G("add", "m.txt");
+        G("commit", "-q", "-m", "moved on");
+        G("update-ref", "refs/remotes/origin/main", "HEAD");
+        G("checkout", "-q", "feat");
+        G("rebase", "-q", "main");
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(0, Commit("git push").Code);
+    }
+
+    [Fact]
+    public void Clean_merge_does_not_block_and_a_merge_with_extra_changes_does()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        G("checkout", "-q", "-b", "feat");
+        CommitReviewed("f.txt", "f");
+        G("checkout", "-q", "main");
+        File.WriteAllText(Path.Combine(_root, "m.txt"), "m");
+        G("add", "m.txt");
+        G("commit", "-q", "-m", "moved on");
+        G("update-ref", "refs/remotes/origin/main", "HEAD");
+        G("merge", "-q", "--no-ff", "-m", "merge", "feat");
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
+
+        // Same merge, with a change smuggled into the merge commit.
+        G("reset", "-q", "--hard", "HEAD~1");
+        G("merge", "-q", "--no-ff", "--no-commit", "feat");
+        File.WriteAllText(Path.Combine(_root, "evil.txt"), "evil");
+        G("add", "evil.txt");
+        G("commit", "-q", "-m", "merge");
+        Stage("three");
+        Assert.Equal(2, Commit().Code);
+    }
+
+    [Fact]
+    public void Commits_from_a_remote_do_not_block()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        var clone = _root + "-clone";
+        try
+        {
+            Proc.Git(Path.GetTempPath(), "clone", "-q", _root, clone);
+            File.WriteAllText(Path.Combine(clone, "r.txt"), "r");
+            Proc.Git(clone, "add", "r.txt");
+            Proc.Git(clone, "-c", "user.email=x@y", "-c", "user.name=x", "commit", "-q", "-m", "remote");
+            G("remote", "add", "other", clone);
+            G("fetch", "-q", "other");
+            G("merge", "-q", "--ff-only", "other/main");
+            Stage("two");
+            Assert.Equal(0, Commit().Code);
+        }
+        finally { TestRepo.Delete(clone); }
+    }
+
+    [Fact]
+    public void Approved_commits_no_longer_block()
+    {
+        Bypass("cherry-pick");
+        var state = _repo.LoadState();
+        _repo.ApproveCommits(state, _repo.UnreviewedCommits(state)); // what `kaldor approve` records once the user says yes
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(0, Commit("git push").Code);
+    }
+
+    [Fact]
+    public void A_commit_with_other_content_than_the_reviewed_one_is_refused()
+    {
+        FreezeIntent();
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "reviewed");
+        G("add", "a.txt");
+        Assert.Equal(0, Commit().Code);
+        File.WriteAllText(Path.Combine(_root, "a.txt"), "reviewed ");
+        G("add", "a.txt");
+        G("commit", "-q", "-m", "whitespace only: still another change");
+        Stage("next");
+        Assert.Equal(2, Commit().Code);
+    }
+
+    [Fact]
+    public void Push_in_a_repository_with_a_clean_history_goes_through_and_only_HEAD_counts()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        Assert.Equal(0, Commit("git -C . push origin main").Code);
+        Side();
+        Assert.Equal(0, Commit("git push").Code);
+    }
 }

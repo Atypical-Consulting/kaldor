@@ -14,5 +14,6 @@
     "sensitive_change",
     "weakened_tests",
     "contradicts_intent"
-  ]
+  ],
+  "confirm": "after"
 }

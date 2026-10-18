@@ -91,8 +91,12 @@ static class Commands
 
         repo.SaveState(state with { IntentHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", IntentHash: hash, Intent: intent));
-        Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
-                          "commits wait for it, edits do not. Run `kaldor intent wait` in the background to continue as soon as they do.");
+        if (repo.LoadRules().ConfirmAfter)
+            Console.WriteLine($"Intent frozen ({hash[..19]}…). Commits will not wait for it (confirm: after in rules.json); " +
+                              $"the user can still confirm it with {ForUser("intent confirm")}.");
+        else
+            Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
+                              "commits wait for it, edits do not. Run `kaldor intent wait` in the background to continue as soon as they do.");
         return 0;
     }
 
@@ -223,10 +227,10 @@ static class Commands
         return 0;
     }
 
-    public static int Report(string cwd, int count)
+    public static int Report(string cwd, int count, bool unconfirmedOnly = false)
     {
         var repo = RequireRepo(cwd);
-        var entries = repo.ReadAllLogs().TakeLast(count).ToList();
+        var entries = repo.ReadAllLogs().Where(x => !unconfirmedOnly || x.Entry.Unconfirmed == true).TakeLast(count).ToList();
         if (entries.Count == 0) Console.WriteLine("No review yet.");
         foreach (var (worktree, e) in entries) Print(e, worktree == repo.Worktree ? null : worktree);
         return 0;
@@ -236,7 +240,7 @@ static class Commands
     {
         var verdict = e.Verdict switch { "pass" => "ACCEPTED", "block" => "BLOCKED", "approve" => "FORCED", _ => "" };
         var where = otherWorktree is null ? "" : $"  [worktree {otherWorktree}]";
-        Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}{where}");
+        Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}{(e.Unconfirmed == true ? " UNCONFIRMED" : "")}{where}");
         if (e.Kind is not ("review" or "dry-run" or "approve") && e.Intent is not null)
             Console.WriteLine($"  intent     {FirstLine(e.Intent)}");
         foreach (var d in e.Deviations ?? []) Console.WriteLine($"  deviation  {d}");
@@ -316,7 +320,12 @@ static class Commands
         Line(repo.Enabled, "Kaldor enabled in this repository (.kaldor/rules.json)", "Run `kaldor init`.");
         if (repo.Enabled)
         {
-            try { repo.LoadRules(); Line(true, "rules.json is valid"); }
+            try
+            {
+                var confirm = repo.LoadRules().Confirm;
+                if (confirm is not ("before" or "after")) Line(false, "rules.json is valid", $"confirm must be \"before\" or \"after\", not \"{confirm}\".");
+                else Line(true, "rules.json is valid");
+            }
             catch (JsonException ex) { Line(false, "rules.json is valid", ex.Message); }
         }
         Line(repo.HookInstalled, "git pre-commit hook installed", "Run `kaldor init`.");

@@ -11,7 +11,7 @@ const string Usage = """
       kaldor intent amend "<text>"      propose a change to the frozen intent (the agent)
       kaldor intent amend --accept      accept the proposed change (you only)
       kaldor review                     dry-run review of the staged diff, nothing recorded
-      kaldor report [count]             latest reviews at intent level (default 10)
+      kaldor report [count] [--unconfirmed]  latest reviews at intent level (default 10); only those made before confirmation
       kaldor approve                    force the staged diff through (you only)
       kaldor doctor                     check the installation
       kaldor gate                       PreToolUse hook entry point (reads the hook JSON on stdin)
@@ -38,6 +38,9 @@ try
         ["intent", "amend", .. var text] when text.Length > 0 => Commands.ProposeAmendment(cwd, string.Join(' ', text)),
         ["review"] => Commands.Review(cwd, review),
         ["report"] => Commands.Report(cwd, 10),
+        ["report", "--unconfirmed"] => Commands.Report(cwd, 10, unconfirmedOnly: true),
+        ["report", var n, "--unconfirmed"] when int.TryParse(n, out var uc) => Commands.Report(cwd, uc, unconfirmedOnly: true),
+        ["report", "--unconfirmed", var m] when int.TryParse(m, out var uc2) => Commands.Report(cwd, uc2, unconfirmedOnly: true),
         ["report", var n] when int.TryParse(n, out var count) => Commands.Report(cwd, count),
         ["approve"] => Commands.Approve(cwd),
         ["doctor"] => Commands.Doctor(cwd),

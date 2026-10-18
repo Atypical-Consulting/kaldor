@@ -360,6 +360,7 @@ kaldor intent amend --accept                                     <span class="c"
           <tr><td><code>sensitive</code></td><td>Paths whose changes the intent must announce. The reviewer is asked to flag them as must-read in the report.</td></tr>
           <tr><td><code>trivial</code></td><td>Paths the reviewer may summarise as mechanical.</td></tr>
           <tr><td><code>reviewer_model</code></td><td>The model the reviewer runs on.</td></tr>
+          <tr><td><code>confirm</code></td><td><code>"before"</code> (default): commits wait for <code>kaldor intent confirm</code>. <code>"after"</code>, for unattended sessions: unconfirmed commits still go to the reviewer and are logged as unconfirmed; <code>kaldor report --unconfirmed</code> lists them. Only you can set it.</td></tr>
           <tr><td><code>block_on</code></td><td>The deviation categories the reviewer is told to block on: <code>scope_creep</code>, <code>sensitive_change</code>, <code>weakened_tests</code>, <code>contradicts_intent</code>.</td></tr>
         </tbody>
       </table>

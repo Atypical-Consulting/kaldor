@@ -115,7 +115,9 @@ static class Gate
         if (diff.Length == 0) return null;
         var diffHash = Repo.Hash(diff);
         if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
-        if (state.ConfirmedHash != intentHash)
+        var rules = repo.LoadRules();
+        var unconfirmed = state.ConfirmedHash != intentHash;
+        if (unconfirmed && !rules.ConfirmAfter)
             return "The user has not confirmed the frozen intent yet. Show it to them and ask them to run " +
                    $"{Commands.ForUser("intent confirm")}. Run `kaldor intent wait` (in the background) to know when they have, " +
                    "then commit again.";
@@ -126,9 +128,9 @@ static class Gate
         var deviations = repo.LatestReview(e => e.Verdict == "block" && e.DiffHash == diffHash && e.IntentHash == intentHash)?.Deviations;
         if (deviations is null)
         {
-            var result = review(repo.LoadRules(), intent, diff);
+            var result = review(rules, intent, diff);
             repo.Log(new LogEntry(DateTimeOffset.Now, "review", result.Verdict, diffHash, intentHash, intent,
-                result.Deviations, result.Hunks, result.Summary));
+                result.Deviations, result.Hunks, result.Summary, unconfirmed ? true : null));
             if (result.Passed)
             {
                 state.Passes.Add(new Pass(diffHash, intentHash, "review"));

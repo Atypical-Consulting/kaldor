@@ -70,7 +70,7 @@ public sealed class BypassTests : IDisposable
 
         var (code, err) = Commit();
         Assert.Equal(2, code);
-        Assert.Contains("kaldor intent confirm", err);
+        Assert.Contains("`dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code", err);
         Assert.Equal(0, _reviews);
 
         Commands.MarkConfirmed(_repo, File.ReadAllText(_repo.IntentPath));
@@ -87,10 +87,24 @@ public sealed class BypassTests : IDisposable
         // The command itself needs a person at an interactive terminal.
         File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
         Assert.Equal(0, Commands.Freeze(_root));
-        var (code, _, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n");
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n");
         Assert.Equal(1, code);
-        Assert.Contains("interactive terminal", err);
         Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+        // It refuses before showing anything, and says what to run instead.
+        Assert.Equal("", output);
+        Assert.DoesNotContain("Goal:", err);
+        Assert.Contains("`dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code", err);
+    }
+
+    [Fact]
+    public void Approve_refuses_without_a_terminal_before_printing_anything()
+    {
+        FreezeIntent();
+        Stage();
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "approve"], _root, stdin: "y\n");
+        Assert.Equal(1, code);
+        Assert.Equal("", output);
+        Assert.Contains("`dnx Atypical.Kaldor approve` in a terminal outside Claude Code", err);
     }
 
     [Fact]

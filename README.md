@@ -56,10 +56,10 @@ Prefer typing `kaldor`? `dotnet tool install -g Atypical.Kaldor`. The examples b
 Work with Claude Code as usual. Kaldor steps in twice:
 
 - **Before the first edit** of a task, Claude writes `.kaldor/intent.md`, shows it to you, then freezes it with `kaldor intent freeze`. Edits are refused until then.
-- **Confirm the intent** with `kaldor intent confirm` in your own terminal, any time before Claude's first commit. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
+- **Confirm the intent** with `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code, any time before Claude's first commit. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
 - **At each commit**, the reviewer runs (a few seconds). Accepted commits go through; rejected ones come back to Claude with the list of deviations.
 
-Your commands, from your own terminal:
+Your commands, from a terminal outside Claude Code (the `!` prefix has no terminal, and the confirmations below need one). Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`:
 
 | Command | What it does |
 | --- | --- |

@@ -15,11 +15,24 @@ static class Commands
         return repo;
     }
 
-    /// <summary>The second lock on human-only commands: a non-interactive caller such as the agent cannot answer.</summary>
-    static bool ConfirmByHuman(string question)
+    /// <summary>The form of a human-only command the user can paste: <c>kaldor</c> itself is on PATH only inside Claude Code.</summary>
+    public static string ForUser(string command) =>
+        $"`dnx Atypical.Kaldor {command}` in a terminal outside Claude Code";
+
+    /// <summary>
+    /// The second lock on human-only commands: a non-interactive caller such as the agent cannot answer.
+    /// Checked before the command prints anything.
+    /// </summary>
+    static void RequireTerminal(string command)
     {
         if (Console.IsInputRedirected)
-            throw new KaldorException("This command needs a person at an interactive terminal.");
+            throw new KaldorException(
+                $"This command needs a person at an interactive terminal. Run {ForUser(command)} " +
+                "(the `!` prefix in Claude Code has no terminal).");
+    }
+
+    static bool ConfirmByHuman(string question)
+    {
         Console.Write($"{question} [y/N] ");
         return Console.ReadLine()?.Trim().ToLowerInvariant() is "y" or "yes";
     }
@@ -78,14 +91,15 @@ static class Commands
 
         repo.SaveState(state with { IntentHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", null, null, hash, intent, null, null, null));
-        Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run `kaldor intent confirm` in their own " +
-                          "terminal: commits wait for it, edits do not.");
+        Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
+                          "commits wait for it, edits do not.");
         return 0;
     }
 
     /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
     public static int ConfirmIntent(string cwd)
     {
+        RequireTerminal("intent confirm");
         var repo = RequireRepo(cwd);
         var state = repo.LoadState();
         var intent = repo.ReadIntent();
@@ -118,12 +132,13 @@ static class Commands
         if (repo.LoadState().IntentHash is null) throw new KaldorException("No frozen intent to amend.");
         repo.SaveAmendment(text.Trim() + "\n");
         repo.Log(new LogEntry(DateTimeOffset.Now, "amend-proposed", null, null, null, text, null, null, null));
-        Console.WriteLine("Amendment proposed. Ask the user to run `kaldor intent amend --accept` in their own terminal.");
+        Console.WriteLine($"Amendment proposed. Ask the user to run {ForUser("intent amend --accept")}.");
         return 0;
     }
 
     public static int AcceptAmendment(string cwd)
     {
+        RequireTerminal("intent amend --accept");
         var repo = RequireRepo(cwd);
         if (!File.Exists(repo.AmendmentPath)) throw new KaldorException("No amendment is waiting.");
         var text = File.ReadAllText(repo.AmendmentPath).Trim();
@@ -196,6 +211,7 @@ static class Commands
 
     public static int Approve(string cwd)
     {
+        RequireTerminal("approve");
         var repo = RequireRepo(cwd);
         var intent = repo.ReadIntent() ?? throw new KaldorException("No intent to approve against.");
         var diff = repo.StagedDiff();

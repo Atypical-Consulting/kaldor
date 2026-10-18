@@ -661,6 +661,24 @@ public sealed class BypassTests : IDisposable
         Assert.Null(_repo.LoadState().Pending);
     }
 
+    [Theory]
+    [InlineData("kaldor gate")]
+    [InlineData("dnx --yes Atypical.Kaldor gate")]
+    [InlineData("echo '{\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"kaldor intent confirm\"}}' | kaldor gate")]
+    [InlineData("bash -c 'kaldor gate < hook.json'")]
+    public void The_agent_cannot_run_the_gate_to_mint_a_ticket(string command)
+    {
+        FreezeIntent(confirm: false);
+        var (code, err, output) = AskHook(command);
+        Assert.Equal(2, code);
+        Assert.Contains("`kaldor gate` runs only as Claude Code's own hook", err);
+        Assert.Equal("", output);
+        Assert.Null(_repo.LoadState().Pending);
+        // The real hook still asks for the command alone.
+        Asked(AskHook("kaldor intent confirm"));
+        Assert.NotNull(_repo.LoadState().Pending);
+    }
+
     [Fact]
     public void The_gate_does_not_ask_with_nothing_to_vouch_for()
     {

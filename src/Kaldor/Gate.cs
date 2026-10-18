@@ -101,7 +101,8 @@ static partial class Gate
         _ = Repo.Find(cwd);
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
-            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
+            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user, " +
+                   "and `kaldor gate` runs only as Claude Code's own hook. " +
                    $"Ask them to run it themselves as {Commands.ForUser("<command>")}. Run alone and exactly as `kaldor <command>`, " +
                    "in a permission mode that asks, it shows the user a permission prompt instead, as long as there is something " +
                    "to vouch for: a frozen and unchanged, unconfirmed intent, a staged diff or unreviewed commits, a proposed amendment.";

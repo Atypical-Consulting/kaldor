@@ -87,7 +87,7 @@ Your commands, from a terminal outside Claude Code. Without the global tool, typ
 
 ```json
 {
-  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
+  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**", ".githooks/**", ".husky/**"],
   "trivial": ["**/*.md"],
   "reviewer_model": "sonnet",
   "block_on": ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]

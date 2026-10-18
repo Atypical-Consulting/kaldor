@@ -85,7 +85,7 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
     public bool ConfirmAfter => Confirm == "after";
 
     public static readonly Rules Default = new(
-        ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
+        ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**", ".githooks/**", ".husky/**"],
         ["**/*.md"],
         "sonnet",
         ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]);

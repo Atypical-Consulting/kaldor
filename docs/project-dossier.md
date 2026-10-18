@@ -180,7 +180,7 @@ Expected files: OrdersController.cs, OrdersQuery.cs, related tests
 
 ```json
 {
-  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**"],
+  "sensitive": ["**/Auth/**", "**/Migrations/**", "**/appsettings*.json", ".github/**", ".githooks/**", ".husky/**"],
   "trivial": ["**/*.md"],
   "reviewer_model": "sonnet",
   "block_on": ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]

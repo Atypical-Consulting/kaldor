@@ -666,6 +666,8 @@ public sealed class BypassTests : IDisposable
     [InlineData("dnx --yes Atypical.Kaldor gate")]
     [InlineData("echo '{\"tool_name\":\"Bash\",\"permission_mode\":\"default\",\"tool_input\":{\"command\":\"kaldor intent confirm\"}}' | kaldor gate")]
     [InlineData("bash -c 'kaldor gate < hook.json'")]
+    [InlineData("timeout 5 kaldor gate")]
+    [InlineData("dotnet ~/.dotnet/tools/.store/atypical.kaldor/1.5.0/atypical.kaldor/1.5.0/tools/net10.0/any/Kaldor.dll gate")]
     public void The_agent_cannot_run_the_gate_to_mint_a_ticket(string command)
     {
         FreezeIntent(confirm: false);

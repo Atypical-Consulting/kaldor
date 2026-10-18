@@ -68,9 +68,13 @@ static class CommandParser
     {
         if (name is "kaldor" or "kaldor.cmd") return rest;
         if (name is not ("dnx" or "dotnet")) return null;
-        var tool = rest.FindIndex(a => a.Equals("Atypical.Kaldor", StringComparison.OrdinalIgnoreCase) || a.Equals("kaldor", StringComparison.OrdinalIgnoreCase));
+        var tool = rest.FindIndex(a => a.Equals("Atypical.Kaldor", StringComparison.OrdinalIgnoreCase) || a.Equals("kaldor", StringComparison.OrdinalIgnoreCase) ||
+                                       Path.GetFileName(a).Equals("Kaldor.dll", StringComparison.OrdinalIgnoreCase));
         return tool < 0 ? null : rest[(tool + 1)..];
     }
+
+    static bool LaunchesHumanOnly(string word, List<string> words, int at) =>
+        KaldorArgs(word.ToLowerInvariant().Replace(".exe", ""), words[(at + 1)..]) is { } launched && IsHumanOnly(launched);
 
     static bool IsHumanOnly(List<string> args) =>
         args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..]
@@ -153,6 +157,7 @@ static class CommandParser
                     var word = Path.GetFileName(rest[k]);
                     if (word is "env" or "exec" && ClearsEnvironment(rest, k)) found.ClearsClaudeCode = true;
                     if (rest[k].Contains(' ')) Scan(rest[k], cwd, aliases, found, depth + 1); // script -qc '...', su -c '...'
+                    if (LaunchesHumanOnly(word, rest, k)) found.HumanOnly = true;
                 }
 
             if (name is "cd" or "pushd" or "set-location" or "sl")

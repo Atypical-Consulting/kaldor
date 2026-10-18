@@ -164,6 +164,11 @@ public class CommandParserTests
     [InlineData("gh issue create --title x --body \"$(cat <<'EOF'\nthe gate refused\nkaldor approve\nEOF\n)\"", false)]
     [InlineData("gh issue create --body \"blocked by kaldor approve; see #7\"", false)]
     [InlineData("echo $((1 << 2)) \"kaldor approve\"", false)]
+    [InlineData("timeout 5 kaldor gate", true)]
+    [InlineData("xargs -a hook.json kaldor gate", true)]
+    [InlineData("timeout 5 kaldor approve", true)]
+    [InlineData("dotnet ~/.dotnet/tools/.store/atypical.kaldor/1.5.0/atypical.kaldor/1.5.0/tools/net10.0/any/Kaldor.dll gate", true)]
+    [InlineData("timeout 5 kaldor report", false)]
     public void Spots_human_only_commands(string command, bool humanOnly) =>
         Assert.Equal(humanOnly, CommandParser.Analyze(command, Cwd, NoAliases).HumanOnly);
 

@@ -138,9 +138,6 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public string Prefix { get; } = prefix;
     public bool HookInstalled => File.Exists(HookPath) && File.ReadAllText(HookPath).Contains("Atypical.Kaldor");
 
-    /// <summary>True when git would run Kaldor's hook: it is the one at <see cref="HookPath"/> and, outside Windows, executable (git skips a hook that is not).</summary>
-    public bool HookRuns => HookInstalled && (OperatingSystem.IsWindows() || (File.GetUnixFileMode(HookPath) & UnixFileMode.UserExecute) != 0);
-
     /// <summary>Kaldor only acts on repositories where <c>kaldor init</c> was run.</summary>
     public bool Enabled => File.Exists(RulesPath) || CommittedRules() is not null;
 
@@ -203,6 +200,9 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     public static string Hash(string text) =>
         "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+
+    /// <summary>True when git would run Kaldor's hook: it is the one at <see cref="HookPath"/> and, outside Windows, executable (git skips a hook that is not).</summary>
+    public bool HookRuns => HookInstalled && (OperatingSystem.IsWindows() || (File.GetUnixFileMode(HookPath) & UnixFileMode.UserExecute) != 0);
 
     /// <summary>
     /// The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE. Textconv and external

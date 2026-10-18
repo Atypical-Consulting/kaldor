@@ -8,30 +8,11 @@ public sealed class StateTests : IDisposable
     readonly string _root = Path.Combine(Path.GetTempPath(), "kaldor-state-" + Guid.NewGuid().ToString("N"));
     string Linked => _root + "-wt";
 
-    public StateTests()
-    {
-        Directory.CreateDirectory(_root);
-        Proc.Git(_root, "init", "-q", "-b", "main");
-        Proc.Git(_root, "config", "user.email", "test@example.com");
-        Proc.Git(_root, "config", "user.name", "Test");
-        Proc.Git(_root, "config", "commit.gpgsign", "false");
-        Directory.CreateDirectory(Path.Combine(_root, ".kaldor"));
-        File.WriteAllText(Path.Combine(_root, ".kaldor", "rules.json"), JsonSerializer.Serialize(Rules.Default, Repo.Json));
-        File.WriteAllText(Path.Combine(_root, ".kaldor", ".gitignore"), "*\n!.gitignore\n!rules.json\n");
-        Proc.Git(_root, "add", "-A");
-        Proc.Git(_root, "commit", "-q", "-m", "init");
-    }
+    public StateTests() => TestRepo.Create(_root);
 
-    public void Dispose()
-    {
-        foreach (var dir in new[] { _root, Linked }.Where(Directory.Exists))
-        {
-            foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal);
-            Directory.Delete(dir, recursive: true);
-        }
-    }
+    public void Dispose() => TestRepo.Delete(_root, Linked);
 
-    static LogEntry Entry(string kind) => new(DateTimeOffset.Now, kind, null, null, null, null, null, null, null);
+    static LogEntry Entry(string kind) => new(DateTimeOffset.Now, kind);
 
     [Fact]
     public void State_and_history_live_in_the_git_directory()

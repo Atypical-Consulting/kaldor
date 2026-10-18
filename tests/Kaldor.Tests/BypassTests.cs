@@ -18,24 +18,11 @@ public sealed class BypassTests : IDisposable
 
     public BypassTests()
     {
-        Directory.CreateDirectory(_root);
-        Proc.Git(_root, "init", "-q", "-b", "main");
-        Proc.Git(_root, "config", "user.email", "test@example.com");
-        Proc.Git(_root, "config", "user.name", "Test");
-        Proc.Git(_root, "config", "commit.gpgsign", "false");
-        Directory.CreateDirectory(Path.Combine(_root, ".kaldor"));
-        File.WriteAllText(Path.Combine(_root, ".kaldor", "rules.json"), JsonSerializer.Serialize(Rules.Default, Repo.Json));
-        File.WriteAllText(Path.Combine(_root, ".kaldor", ".gitignore"), "*\n!.gitignore\n!rules.json\n");
-        Proc.Git(_root, "add", "-A");
-        Proc.Git(_root, "commit", "-q", "-m", "init");
+        TestRepo.Create(_root);
         _repo = Repo.Find(_root)!;
     }
 
-    public void Dispose()
-    {
-        foreach (var f in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)) File.SetAttributes(f, FileAttributes.Normal);
-        Directory.Delete(_root, recursive: true);
-    }
+    public void Dispose() => TestRepo.Delete(_root);
 
     ReviewResult FakeReview(Rules rules, string intent, string diff)
     {
@@ -53,18 +40,17 @@ public sealed class BypassTests : IDisposable
 
     (int Code, string Err) Commit(string command = "git commit -m change", string? cwd = null) => Hook("Bash", new { command }, cwd);
 
-    void FreezeIntent(string text = "# Intent\nGoal: change a.txt\n")
+    void FreezeIntent(string text = "# Intent\nGoal: change a.txt\n", bool confirm = true)
     {
         File.WriteAllText(_repo.IntentPath, text);
         Assert.Equal(0, Commands.Freeze(_root));
-        Commands.MarkConfirmed(_repo, text); // what `kaldor intent confirm` records once the user says yes
+        if (confirm) Commands.MarkConfirmed(_repo, text); // what `kaldor intent confirm` records once the user says yes
     }
 
     [Fact]
     public void Commits_wait_for_the_user_to_confirm_the_intent()
     {
-        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
-        Assert.Equal(0, Commands.Freeze(_root));
+        FreezeIntent(confirm: false);
         Assert.Equal(0, Hook("Write", new { file_path = Path.Combine(_root, "a.txt"), content = "x" }).Code);
         Stage();
 
@@ -85,8 +71,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(2, Commit("dnx --yes Atypical.Kaldor intent confirm").Code);
 
         // The command itself needs a person at an interactive terminal.
-        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
-        Assert.Equal(0, Commands.Freeze(_root));
+        FreezeIntent(confirm: false);
         var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n");
         Assert.Equal(1, code);
         Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
@@ -100,8 +85,7 @@ public sealed class BypassTests : IDisposable
     public void Intent_wait_returns_once_the_user_confirms()
     {
         const string Text = "# Intent\nGoal: change a.txt\n";
-        File.WriteAllText(_repo.IntentPath, Text);
-        Assert.Equal(0, Commands.Freeze(_root));
+        FreezeIntent(Text, confirm: false);
         // The user confirms from another terminal while the agent waits.
         var user = new Thread(() => { Thread.Sleep(300); Commands.MarkConfirmed(_repo, Text); });
         user.Start();
@@ -115,8 +99,7 @@ public sealed class BypassTests : IDisposable
     {
         Assert.Throws<KaldorException>(() => Commands.WaitForConfirmation(_root, TimeSpan.FromSeconds(1)));
 
-        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
-        Assert.Equal(0, Commands.Freeze(_root));
+        FreezeIntent(confirm: false);
         Assert.Equal(1, Commands.WaitForConfirmation(_root, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(50)));
 
         File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: something else\n");
@@ -148,8 +131,7 @@ public sealed class BypassTests : IDisposable
     [Fact]
     public void An_approved_diff_does_not_wait_for_confirmation()
     {
-        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
-        Assert.Equal(0, Commands.Freeze(_root));
+        FreezeIntent(confirm: false);
         Stage();
         // What `kaldor approve` records once the user says yes.
         var state = _repo.LoadState();

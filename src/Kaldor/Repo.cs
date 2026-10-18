@@ -74,14 +74,14 @@ sealed record ReviewResult(string Verdict, string[] Deviations, Hunk[] Hunks, st
 }
 
 sealed record LogEntry(
-    DateTimeOffset At, string Kind, string? Verdict, string? DiffHash, string? IntentHash,
-    string? Intent, string[]? Deviations, Hunk[]? Hunks, string? Summary);
+    DateTimeOffset At, string Kind, string? Verdict = null, string? DiffHash = null, string? IntentHash = null,
+    string? Intent = null, string[]? Deviations = null, Hunk[]? Hunks = null, string? Summary = null);
 
 /// <summary>
 /// A git repository: <c>.kaldor/</c> in the work tree holds the rules and the intent; the state and the history live
 /// in the git common directory, out of reach of <c>git clean</c> and <c>git worktree remove</c>.
 /// </summary>
-sealed partial class Repo(string root, string stateDir, string worktree)
+sealed partial class Repo(string root, string commonStateDir, string stateDir, string worktree, string hookPath, string prefix)
 {
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -102,6 +102,11 @@ sealed partial class Repo(string root, string stateDir, string worktree)
     public string AmendmentPath => Path.Combine(StateDir, "amendment.md");
     public string StatePath => Path.Combine(StateDir, "state.json");
     public string LogDir => Path.Combine(StateDir, "log");
+    /// <summary>The absolute path of the pre-commit hook, wherever <c>core.hooksPath</c> puts it.</summary>
+    public string HookPath { get; } = hookPath;
+    /// <summary>The directory git was asked from, relative to <see cref="Root"/>, with a trailing slash (empty at the top).</summary>
+    public string Prefix { get; } = prefix;
+    public bool HookInstalled => File.Exists(HookPath) && File.ReadAllText(HookPath).Contains("Atypical.Kaldor");
 
     /// <summary>Kaldor only acts on repositories where <c>kaldor init</c> was run.</summary>
     public bool Enabled => File.Exists(RulesPath);
@@ -110,20 +115,19 @@ sealed partial class Repo(string root, string stateDir, string worktree)
     {
         if (!Directory.Exists(cwd)) return null;
         var (code, output, _) = Proc.Run(
-            "git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir", "--git-path", "hooks/pre-commit"], cwd);
+            "git", ["rev-parse", "--path-format=absolute", "--show-toplevel", "--git-dir", "--git-common-dir", "--git-path", "hooks/pre-commit", "--show-prefix"], cwd);
         if (code != 0) return null;
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        if (lines.Length < 4) return null; // inside .git itself: no work tree
+        var lines = output.Split('\n');
+        if (lines.Length < 5 || lines[0].Length == 0) return null; // inside .git itself: no work tree
         var (gitDir, commonDir) = (Path.GetFullPath(lines[1]), Path.GetFullPath(lines[2]));
-        var linked = gitDir != commonDir;
-        var stateDir = linked
-            ? Path.Combine(commonDir, "kaldor", "worktrees", Path.GetFileName(gitDir))
-            : Path.Combine(commonDir, "kaldor");
-        var repo = new Repo(Path.GetFullPath(lines[0]), stateDir, linked ? Path.GetFileName(gitDir) : "main");
+        var common = Path.Combine(commonDir, "kaldor");
+        var linked = gitDir != commonDir ? Path.GetFileName(gitDir) : null;
+        var repo = new Repo(Path.GetFullPath(lines[0]), common, linked is null ? common : Path.Combine(common, "worktrees", linked),
+            linked ?? "main", lines[3], lines[4]);
         if (repo.Enabled)
         {
             repo.MoveLegacyState();
-            RefreshHook(lines[3]);
+            RefreshHook(repo.HookPath);
         }
         return repo;
     }
@@ -206,6 +210,13 @@ sealed partial class Repo(string root, string stateDir, string worktree)
 
     public List<LogEntry> ReadLog() => ReadLog(LogDir).Select(e => e.Entry).ToList();
 
+    /// <summary>The newest review of this worktree that matches, reading only the review entries, newest first.</summary>
+    public LogEntry? LatestReview(Func<LogEntry, bool> match) =>
+        !Directory.Exists(LogDir) ? null :
+        Directory.GetFiles(LogDir, "*-review.json").OrderDescending(StringComparer.Ordinal)
+            .Select(f => JsonSerializer.Deserialize<LogEntry>(File.ReadAllText(f), Json)!)
+            .FirstOrDefault(match);
+
     /// <summary>The history of every worktree, oldest first, each entry with the id of the worktree it came from.</summary>
     public List<(string Worktree, LogEntry Entry)> ReadAllLogs()
     {
@@ -221,7 +232,7 @@ sealed partial class Repo(string root, string stateDir, string worktree)
     }
 
     /// <summary><c>&lt;git-common-dir&gt;/kaldor/</c>, shared by every worktree.</summary>
-    string CommonStateDir => Worktree == "main" ? StateDir : Path.GetFullPath(Path.Combine(StateDir, "..", ".."));
+    string CommonStateDir { get; } = commonStateDir;
 
     static IEnumerable<(string Name, LogEntry Entry)> ReadLog(string dir) =>
         !Directory.Exists(dir) ? [] :

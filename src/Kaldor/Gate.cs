@@ -44,8 +44,7 @@ static class Gate
         var repo = dir is null ? null : Repo.Find(dir);
         if (repo is not { Enabled: true }) return null;
 
-        var prefix = Proc.Git(dir!, "rev-parse", "--show-prefix").Trim();
-        var rel = (prefix + Path.GetRelativePath(dir!, full)).Replace('\\', '/');
+        var rel = (repo.Prefix + Path.GetRelativePath(dir!, full)).Replace('\\', '/');
 
         var frozen = repo.LoadState().IntentHash is not null;
         if (rel == ".kaldor/intent.md")
@@ -86,7 +85,7 @@ static class Gate
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
             return "`kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` are reserved for the user. " +
-                   "Ask them to run it themselves as `dnx Atypical.Kaldor <command>` in a terminal outside Claude Code.";
+                   $"Ask them to run it themselves as {Commands.ForUser("<command>")}.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 
         foreach (var commit in found.Commits)
@@ -124,8 +123,7 @@ static class Gate
             return $"The staged diff is too large for one review ({diff.Length:N0} characters). Split it into smaller commits.";
 
         // The same diff against the same intent was already rejected: same answer, no second model call.
-        var deviations = repo.ReadLog().LastOrDefault(e => e is { Kind: "review", Verdict: "block" } &&
-                                                          e.DiffHash == diffHash && e.IntentHash == intentHash)?.Deviations;
+        var deviations = repo.LatestReview(e => e.Verdict == "block" && e.DiffHash == diffHash && e.IntentHash == intentHash)?.Deviations;
         if (deviations is null)
         {
             var result = review(repo.LoadRules(), intent, diff);

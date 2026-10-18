@@ -73,13 +73,18 @@ static class CommandParser
     static bool IsHumanOnly(List<string> args) =>
         args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..];
 
+    /// <summary>Programs that run another command given as arguments (or, like <c>script -c</c>, as one string).</summary>
+    static readonly HashSet<string> Launchers =
+        ["script", "timeout", "setsid", "xargs", "stdbuf", "flock", "find", "watch", "ionice", "chrt", "taskset", "busybox",
+         "sudo", "doas", "su", "runuser", "unbuffer", "socat", "expect", "parallel", "strace", "ltrace"];
+
     static bool IsClaudeCodeAssignment(string word) =>
         word.StartsWith("CLAUDECODE=", StringComparison.Ordinal) && word != "CLAUDECODE=1";
 
     /// <summary><c>env -i / -u CLAUDECODE / --unset</c> and <c>exec -c</c>, reading the words after the one at <paramref name="at"/>.</summary>
     static bool ClearsEnvironment(List<string> words, int at)
     {
-        var flag = words[at] == "exec" ? 'c' : 'i';
+        var flag = Path.GetFileName(words[at]) == "exec" ? 'c' : 'i';
         for (var j = at + 1; j < words.Count && (words[j].StartsWith('-') || IsAssignment(words[j])); j++)
         {
             var w = words[j];
@@ -120,7 +125,15 @@ static class CommandParser
 
             var name = Path.GetFileName(segment[i]).ToLowerInvariant().Replace(".exe", "");
             var rest = segment.Skip(i + 1).ToList();
-            if (ClearsClaudeCode(name, rest)) found.ClearsClaudeCode = true;
+            if (ClearsClaudeCode(name, rest) || (name is "env" or "exec" && ClearsEnvironment(segment, i)))
+                found.ClearsClaudeCode = true;
+            if (Launchers.Contains(name))
+                for (var k = 0; k < rest.Count; k++)
+                {
+                    var word = Path.GetFileName(rest[k]);
+                    if (word is "env" or "exec" && ClearsEnvironment(rest, k)) found.ClearsClaudeCode = true;
+                    if (rest[k].Contains(' ')) Scan(rest[k], cwd, aliases, found, depth + 1); // script -qc '...', su -c '...'
+                }
 
             if (name is "cd" or "pushd" or "set-location" or "sl")
             {

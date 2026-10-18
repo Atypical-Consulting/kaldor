@@ -407,6 +407,12 @@ static class Commands
                 catch (JsonException ex) { Line(false, label, ex.Message); }
             }
             Rules Parse(string json) => JsonSerializer.Deserialize<Rules>(json, Repo.Json) ?? Rules.Default;
+            if (repo.Guarded)
+            {
+                Console.WriteLine("ok    this repository is guarded on every branch");
+                if (repo.CommittedRules() is null)
+                    Console.WriteLine("warn  HEAD has no .kaldor/rules.json; the default rules apply");
+            }
             Validate("rules.json is valid", repo.LoadRules);
             if (repo.CommittedRules() is { } committed && File.Exists(repo.RulesPath))
             {

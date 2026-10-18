@@ -129,8 +129,17 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public string Prefix { get; } = prefix;
     public bool HookInstalled => File.Exists(HookPath) && File.ReadAllText(HookPath).Contains("Atypical.Kaldor");
 
+    /// <summary>
+    /// Written once Kaldor has seen committed rules, in the common state directory. From then on the repository is guarded
+    /// whatever is checked out; the user turns Kaldor off by removing it.
+    /// </summary>
+    public string GuardedPath => Path.Combine(CommonStateDir, "guarded");
+
+    /// <summary>True once the rules were committed: Kaldor acts on every checkout, and the work-tree rules are never read.</summary>
+    public bool Guarded => File.Exists(GuardedPath);
+
     /// <summary>Kaldor only acts on repositories where <c>kaldor init</c> was run.</summary>
-    public bool Enabled => File.Exists(RulesPath) || CommittedRules() is not null;
+    public bool Enabled => Guarded || File.Exists(RulesPath) || CommittedRules() is not null;
 
     public static Repo? Find(string cwd)
     {
@@ -145,6 +154,11 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         var linked = gitDir != commonDir ? Path.GetFileName(gitDir) : null;
         var repo = new Repo(Path.GetFullPath(lines[0]), common, linked is null ? common : Path.Combine(common, "worktrees", linked),
             linked ?? "main", lines[3], lines[4]);
+        if (!repo.Guarded && (repo.CommittedRules() is not null || repo.AnyRefHasRules()))
+        {
+            Directory.CreateDirectory(common);
+            File.WriteAllText(repo.GuardedPath, "");
+        }
         if (repo.Enabled)
         {
             repo.MoveLegacyState();
@@ -372,12 +386,24 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         return code == 0 ? output : null;
     }
 
+    /// <summary>True when a local branch or remote-tracking ref has <c>.kaldor/rules.json</c> at its tip.</summary>
+    bool AnyRefHasRules()
+    {
+        var (code, refs, _) = Proc.Run("git", ["--no-replace-objects", "for-each-ref", "--format=%(objectname)", "refs/heads", "refs/remotes"], Root);
+        if (code != 0 || refs.Length == 0) return false;
+        var query = string.Concat(refs.Split('\n', StringSplitOptions.RemoveEmptyEntries).Distinct().Select(sha => sha.Trim() + ":.kaldor/rules.json\n"));
+        var (c2, output, _) = Proc.Run("git", ["--no-replace-objects", "cat-file", "--batch-check"], Root, query);
+        return c2 == 0 && output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Any(l => !l.TrimEnd().EndsWith(" missing"));
+    }
+
     /// <summary>
-    /// The rules the gate applies: those committed at HEAD, so no command can change them without a commit. Until the
-    /// setup is first committed, the work-tree file.
+    /// The rules the gate applies: those committed at HEAD, so no command can change them without a commit. On a commit
+    /// without them in a guarded repository, the defaults. Until the setup is first committed, the work-tree file.
     /// </summary>
     public Rules LoadRules() =>
-        JsonSerializer.Deserialize<Rules>(CommittedRules() ?? File.ReadAllText(RulesPath), Json) ?? Rules.Default;
+        CommittedRules() is { } committed ? JsonSerializer.Deserialize<Rules>(committed, Json) ?? Rules.Default
+        : Guarded ? Rules.Default
+        : JsonSerializer.Deserialize<Rules>(File.ReadAllText(RulesPath), Json) ?? Rules.Default;
 
     /// <summary>True when the staged changes touch anything in <c>.kaldor/</c>.</summary>
     public bool StagedKaldorChange() =>

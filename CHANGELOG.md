@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.6.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.5.0...v1.6.0) (2026-10-18)
+
+
+### Added
+
+* **gate:** confirm, approve and accept from a Claude Code permission prompt ([#37](https://github.com/Atypical-Consulting/kaldor/issues/37)) ([#62](https://github.com/Atypical-Consulting/kaldor/issues/62)) ([216fa3a](https://github.com/Atypical-Consulting/kaldor/commit/216fa3a8b72a95068eaae95d0f15adbd4329de8e))
+* skip the model review for small confirmed changes ([#65](https://github.com/Atypical-Consulting/kaldor/issues/65)) ([ff83cdd](https://github.com/Atypical-Consulting/kaldor/commit/ff83cddd85531b2969de323aaff72a3be7d3f290))
+
+
+### Fixed
+
+* **gate:** approve prompt shows a .kaldor file an attribute hides ([#74](https://github.com/Atypical-Consulting/kaldor/issues/74)) ([c0c08d8](https://github.com/Atypical-Consulting/kaldor/commit/c0c08d87007f88b7f0f2034bd34f1d044daa03a6))
+* **gate:** make hook directories sensitive by default ([#72](https://github.com/Atypical-Consulting/kaldor/issues/72)) ([8e04f35](https://github.com/Atypical-Consulting/kaldor/commit/8e04f35b8e2576d0ac1d14b49edef1668b8d808a))
+* **gate:** refuse kaldor gate through launchers and Kaldor.dll ([#71](https://github.com/Atypical-Consulting/kaldor/issues/71)) ([57cbf0b](https://github.com/Atypical-Consulting/kaldor/commit/57cbf0be738e305de8199e48ce21de73292c4c46))
+* **gate:** review the staged change whatever git settings say ([#59](https://github.com/Atypical-Consulting/kaldor/issues/59)) ([2ab795f](https://github.com/Atypical-Consulting/kaldor/commit/2ab795f0b3ded06f2aaf6b1b1daa304d302f3e52))
+
+
+### Documentation
+
+* **site:** portrait drawing of Figs. 1 and 2 for narrow screens ([#67](https://github.com/Atypical-Consulting/kaldor/issues/67)) ([f567b86](https://github.com/Atypical-Consulting/kaldor/commit/f567b86c05a16ac419703ec6007d2da450fcc39d))
+
 ## [1.5.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.4.0...v1.5.0) (2026-10-18)
 
 

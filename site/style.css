@@ -196,4 +196,5 @@ footer a { color: var(--ink-2); }
   .ref thead { display: none; }
   .ref tr { padding: 12px 0; border-bottom: 1px solid var(--line); }
   .ref td { border: 0; padding: 2px 0; }
+  .ref td[data-label]::before { content: attr(data-label) ": "; color: var(--mid); }
 }

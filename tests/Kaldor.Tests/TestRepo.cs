@@ -12,6 +12,10 @@ static class TestRepo
         Proc.Git(root, "config", "user.email", "test@example.com");
         Proc.Git(root, "config", "user.name", "Test");
         Proc.Git(root, "config", "commit.gpgsign", "false");
+        // No detached `gc --auto` / `maintenance --auto` after a commit: it can still be writing into .git when Delete runs (#73).
+        Proc.Git(root, "config", "gc.auto", "0");
+        Proc.Git(root, "config", "maintenance.auto", "false");
+        Proc.Git(root, "config", "gc.autoDetach", "false");
         Directory.CreateDirectory(Path.Combine(root, ".kaldor"));
         File.WriteAllText(Path.Combine(root, ".kaldor", "rules.json"), JsonSerializer.Serialize(Rules.Default, Repo.Json));
         File.WriteAllText(Path.Combine(root, ".kaldor", ".gitignore"), "*\n!.gitignore\n!rules.json\n");

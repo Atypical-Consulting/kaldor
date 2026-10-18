@@ -175,7 +175,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
     /// <summary>The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE.</summary>
-    public string StagedDiff() => Proc.Git(Root, "diff", "--cached", "--no-color", "--no-ext-diff", "-U5");
+    public string StagedDiff() => Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "-U5");
 
     /// <summary>True when the work tree has changes outside <c>.kaldor/</c>: a task is in progress.</summary>
     public bool TaskInProgress() =>
@@ -186,7 +186,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     /// <summary><c>.kaldor/rules.json</c> as committed at HEAD, or null when HEAD has none.</summary>
     public string? CommittedRules()
     {
-        var (code, output, _) = Proc.Run("git", ["show", "HEAD:.kaldor/rules.json"], Root);
+        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "show", "HEAD:.kaldor/rules.json"], Root);
         return code == 0 ? output : null;
     }
 
@@ -199,7 +199,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     /// <summary>True when the staged changes touch anything in <c>.kaldor/</c>.</summary>
     public bool StagedKaldorChange() =>
-        Proc.Git(Root, "diff", "--cached", "--name-only", "--", ":(top).kaldor/").Length > 0;
+        Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--name-only", "--", ":(top).kaldor/").Length > 0;
 
     public State LoadState() =>
         File.Exists(StatePath) ? JsonSerializer.Deserialize<State>(File.ReadAllText(StatePath), Json) ?? State.Empty : State.Empty;

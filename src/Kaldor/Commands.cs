@@ -108,7 +108,12 @@ static class Commands
     /// </summary>
     static bool UsePreconfirmation(Repo repo, State state, string hash, string intent)
     {
-        if (state.ConfirmedHash == hash || state.Preconfirmed?.Contains(hash) != true) return false;
+        if (state.Preconfirmed?.Contains(hash) != true) return false;
+        if (state.ConfirmedHash == hash) // already confirmed: nothing to confirm, but the acceptance is spent
+        {
+            repo.SaveState(state with { Preconfirmed = state.Preconfirmed.Where(h => h != hash).ToList() });
+            return false;
+        }
         repo.SaveState(state with { ConfirmedHash = hash, Preconfirmed = state.Preconfirmed.Where(h => h != hash).ToList() });
         repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent, Summary: "Confirmed up front with intent confirm --all"));
         Console.WriteLine("Intent frozen and already confirmed by the user.");
@@ -186,13 +191,19 @@ static class Commands
         return ConfirmDrafts(RequireRepo(cwd), ConfirmByHuman);
     }
 
+    /// <summary>Control characters other than newline and tab shown as escapes, so a draft cannot hide text from the person reading it.</summary>
+    static string Printable(string text) =>
+        string.Concat(text.Select(c => char.IsControl(c) && c is not ('\n' or '\t') ? $"\\u{(int)c:x4}" : c.ToString()));
+
     internal static int ConfirmDrafts(Repo repo, Func<string, bool> ask)
     {
         var drafts = Directory.Exists(repo.QueueDir)
             ? Directory.GetFiles(repo.QueueDir, "*.md").OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToList()
             : [];
+        drafts = drafts.Where(f => new FileInfo(f).LinkTarget is null).ToList(); // a link could point at a FIFO or at state
         if (drafts.Count == 0)
         {
+            repo.SaveState(repo.LoadState() with { Preconfirmed = [] });
             Console.Error.WriteLine("No draft intents in .kaldor/queue/.");
             return 1;
         }
@@ -200,7 +211,7 @@ static class Commands
         foreach (var file in drafts)
         {
             var text = File.ReadAllText(file); // the hash is of what is shown here, not of a later read
-            Console.WriteLine($"{Path.GetFileName(file)}:\n\n{text.Trim()}\n");
+            Console.WriteLine($"{Path.GetFileName(file)}:\n\n{Printable(text.Trim())}\n");
             if (!ask("Confirm this intent? Claude's commits will be reviewed against it once a task freezes it.")) continue;
             var hash = Repo.Hash(text);
             accepted.Add(hash);

@@ -425,13 +425,17 @@ public sealed class BypassTests : IDisposable
     {
         string P(string rel) => Path.Combine(_root, rel);
         Assert.Equal(0, Hook("Write", new { file_path = P(".kaldor/queue/a.md"), content = "x" }).Code);
-        Assert.Equal(0, Commit("cp a.txt .kaldor/queue/b.md").Code);
+        Assert.Equal(2, Commit("cp a.txt .kaldor/queue/b.md").Code); // shell writes could plant a link: Edit and Write only
         Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/a.json"), content = "x" }).Code);
         Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/sub/a.md"), content = "x" }).Code);
         Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/../rules.json"), content = "x" }).Code);
         Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/rules.json"), content = "x" }).Code);
         Assert.Equal(2, Commit("cp a.txt .kaldor/queue/../rules.json").Code);
         Assert.Equal(2, Commit("ln -s ../.git/kaldor .kaldor/queue").Code);
+        Assert.Equal(2, Commit("ln -s ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("cp -s ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("ln ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("echo x > .kaldor/queue/x.md").Code);
     }
 
     [Fact]

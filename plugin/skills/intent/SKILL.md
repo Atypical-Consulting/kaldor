@@ -37,7 +37,7 @@ user for unattended sessions), skip steps 5 and 6: commits are still reviewed, a
 ## Several tasks in one session
 
 When the session covers several tasks and the user will not be around, draft one intent per task into
-`.kaldor/queue/<name>.md` (same format; gitignored). Show them, then ask the user to run
+`.kaldor/queue/<name>.md` with the Write tool, not the shell (same format; gitignored). Show them, then ask the user to run
 `dnx Atypical.Kaldor intent confirm --all` in a terminal outside Claude Code: they accept each draft one by one.
 When a task starts, copy its draft byte for byte to `.kaldor/intent.md` and run `kaldor intent freeze`: if the text
 is one they accepted, it is already confirmed and commits go straight to the review. Each acceptance is used once;

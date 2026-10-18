@@ -62,9 +62,13 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
         ["scope_creep", "sensitive_change", "weakened_tests", "contradicts_intent"]);
 }
 
-sealed record Pass(string DiffHash, string IntentHash, string By);
+/// <summary>
+/// A reviewed or approved change. <paramref name="PatchId"/> identifies it once it is a commit (see <see cref="Repo.StagedPatchId"/>);
+/// for a merge commit the user approved it is the commit id. Null in states written by Kaldor 1.4.
+/// </summary>
+sealed record Pass(string DiffHash, string IntentHash, string By, string? PatchId = null);
 
-sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, List<string>? Preconfirmed = null)
+sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, List<string>? Preconfirmed = null, string? ReviewedTip = null)
 {
     public static State Empty => new(null, []);
 }
@@ -177,6 +181,79 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     /// <summary>The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE.</summary>
     public string StagedDiff() => Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "-U5");
+
+    // Everything that could make two printings of the same change differ: user config, renames, textconv, binary content.
+    static readonly string[] PatchFlags = ["--no-color", "--no-renames", "--binary", "--src-prefix=a/", "--dst-prefix=b/", "--no-textconv", "--no-ext-diff", "-U3"];
+
+    /// <summary>
+    /// <c>git patch-id --verbatim</c> of the staged diff, which equals that of the commit it becomes. Null when nothing is
+    /// staged or no id could be computed.
+    /// </summary>
+    public string? StagedPatchId() => PatchIdOf(Proc.Git(Root, ["--no-replace-objects", "diff", "--cached", .. PatchFlags]));
+
+    string? PatchIdOf(string diff)
+    {
+        if (diff.Length == 0) return null;
+        var (code, output, _) = Proc.Run("git", ["patch-id", "--verbatim"], Root, diff);
+        return code == 0 && output.Length > 0 ? output.Split(' ')[0] : null;
+    }
+
+    /// <summary>The commit id of HEAD, or null in a repository with no commit.</summary>
+    public string? Head()
+    {
+        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "rev-parse", "--verify", "-q", "HEAD"], Root);
+        return code == 0 ? output.Trim() : null;
+    }
+
+    /// <summary>
+    /// The commits on HEAD that are not in <paramref name="state"/>'s <c>ReviewedTip</c> or on a remote-tracking branch and
+    /// that Kaldor has no reason to accept, oldest first. A commit is accepted when its patch-id has a pass or an approval,
+    /// when it changes nothing, or, for a merge, when its tree is what merging its parents gives. <c>Id</c> is what
+    /// <c>approve</c> records. A commit Kaldor cannot identify is not accepted.
+    /// </summary>
+    public List<(string Sha, string Subject, string Id)> UnreviewedCommits(State state)
+    {
+        var result = new List<(string, string, string)>();
+        if (Head() is null) return result;
+        // A tip that no longer exists (garbage collected) bounds nothing: all local commits are then checked.
+        var tip = state.ReviewedTip is { } t && Proc.Run("git", ["--no-replace-objects", "cat-file", "-e", t + "^{commit}"], Root).Code == 0
+            ? new[] { t } : [];
+        var lines = Proc.Git(Root, ["--no-replace-objects", "rev-list", "--reverse", "--parents", "HEAD", "--not", .. tip, "--remotes"])
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            var ids = line.Split(' ');
+            var (sha, parents) = (ids[0], ids[1..]);
+            string id;
+            if (parents.Length < 2)
+            {
+                var diff = Proc.Git(Root, ["--no-replace-objects", "diff-tree", "-p", "--root", .. PatchFlags, sha]);
+                if (diff.Length == 0) continue; // changes nothing: nothing to review
+                id = PatchIdOf(diff) ?? "";
+            }
+            else
+            {
+                id = sha;
+                if (parents.Length == 2 && IsCleanMerge(sha, parents)) continue;
+            }
+            if (id.Length > 0 && state.Passes.Any(p => p.PatchId == id)) continue;
+            result.Add((sha, Proc.Git(Root, "--no-replace-objects", "show", "-s", "--format=%h %s", sha).Trim(), id));
+        }
+        return result;
+    }
+
+    bool IsCleanMerge(string sha, string[] parents)
+    {
+        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "merge-tree", "--write-tree", parents[0], parents[1]], Root);
+        return code == 0 && output.Split('\n')[0] == Proc.Git(Root, "--no-replace-objects", "rev-parse", sha + "^{tree}").Trim();
+    }
+
+    /// <summary>Records the user's approval of <paramref name="commits"/> and moves the reviewed tip to HEAD.</summary>
+    public void ApproveCommits(State state, IEnumerable<(string Sha, string Subject, string Id)> commits)
+    {
+        foreach (var c in commits.Where(c => c.Id.Length > 0)) state.Passes.Add(new Pass("commit", state.IntentHash ?? "", "approve", c.Id));
+        SaveState(state with { ReviewedTip = Head() });
+    }
 
     /// <summary>True when the work tree has changes outside <c>.kaldor/</c>: a task is in progress.</summary>
     public bool TaskInProgress() =>

@@ -318,6 +318,21 @@ static class Commands
     {
         RequireTerminal("approve");
         var repo = RequireRepo(cwd);
+        var pending = repo.LoadState();
+        var unreviewed = pending.ReviewedTip is null ? [] : repo.UnreviewedCommits(pending);
+        if (unreviewed.Count > 0)
+        {
+            Console.WriteLine("These commits reached HEAD without a Kaldor review:");
+            foreach (var c in unreviewed) Console.WriteLine($"  {c.Subject}");
+            Console.WriteLine("Look at them first, for example with `git show <sha>`.");
+            if (!ConfirmByHuman("Approve these commits without a review?")) return 1;
+            repo.ApproveCommits(pending, unreviewed);
+            repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve",
+                Summary: $"Approved {unreviewed.Count} unreviewed commit(s) by {Environment.UserName}: {string.Join("; ", unreviewed.Select(c => c.Subject))}"));
+            Console.WriteLine("Approved. The agent can commit and push again.");
+            return 0;
+        }
+
         var intent = repo.ReadIntent() ?? throw new KaldorException("No intent to approve against.");
         var diff = repo.StagedDiff();
         if (diff.Length == 0) throw new KaldorException("Nothing is staged.");
@@ -328,7 +343,7 @@ static class Commands
         if (!ConfirmByHuman("Force this staged diff through without a passing review?")) return 1;
 
         var state = repo.LoadState();
-        state.Passes.Add(new Pass(diffHash, intentHash, "approve"));
+        state.Passes.Add(new Pass(diffHash, intentHash, "approve", repo.StagedPatchId()));
         repo.SaveState(state with { IntentHash = state.IntentHash ?? intentHash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve", diffHash, intentHash, intent,
             Summary: $"Forced by {Environment.UserName}"));

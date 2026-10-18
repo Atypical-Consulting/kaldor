@@ -102,6 +102,38 @@ static partial class Gate
                 return "Skipping git hooks (--no-verify, -n, core.hooksPath) is not allowed in a Kaldor repository.";
             if (Evaluate(repo, review) is { } reason) return reason;
         }
+        foreach (var dir in found.Pushes)
+        {
+            var repo = Repo.Find(dir);
+            if (repo is not { Enabled: true }) continue;
+            var state = repo.LoadState();
+            if (CheckHistory(repo, ref state) is { } reason) return reason;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Refuses when a commit on HEAD went in without <c>git commit</c> and was never reviewed or approved (cherry-pick,
+    /// commit-tree, revert, am, a hand-resolved rebase...). Otherwise the commits are checked from now on.
+    /// The first check in a repository, or worktree, trusts the history that exists.
+    /// </summary>
+    static string? CheckHistory(Repo repo, ref State state)
+    {
+        if (state.ReviewedTip is not null)
+        {
+            var unreviewed = repo.UnreviewedCommits(state);
+            if (unreviewed.Count > 0)
+                return "These commits were not reviewed by Kaldor: " +
+                       string.Join(", ", unreviewed.Take(10).Select(c => $"`{c.Subject}`")) + (unreviewed.Count > 10 ? ", ..." : "") +
+                       ". Commits must go through `git commit`. Ask the user to look at them and run " +
+                       $"{Commands.ForUser("approve")}, or remove them (`git reset --keep <last reviewed commit>`).";
+        }
+        var head = repo.Head();
+        if (head != state.ReviewedTip)
+        {
+            state = state with { ReviewedTip = head };
+            repo.SaveState(state);
+        }
         return null;
     }
 
@@ -117,11 +149,22 @@ static partial class Gate
             return "The intent changed after it was frozen. Restore it, or propose the change with " +
                    "`kaldor intent amend \"<text>\"` and ask the user to accept it.";
 
+        if (CheckHistory(repo, ref state) is { } unreviewed) return unreviewed;
+
         var diff = repo.StagedDiff();
         var kaldorChange = repo.StagedKaldorChange();
         if (diff.Length == 0 && !kaldorChange) return null;
         var diffHash = Repo.Hash(diff);
-        if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
+        if (state.Passes.FindIndex(p => p.DiffHash == diffHash && p.IntentHash == intentHash) is var known and >= 0)
+        {
+            // A pass recorded before Kaldor tracked patch-ids: add it, or the commit it allows would look unreviewed.
+            if (state.Passes[known].PatchId is null && repo.StagedPatchId() is { } id)
+            {
+                state.Passes[known] = state.Passes[known] with { PatchId = id };
+                repo.SaveState(state);
+            }
+            return null;
+        }
         if (kaldorChange)
             return "This commit changes Kaldor's own files in .kaldor/. Only the user can allow that: ask them to review " +
                    $"the staged diff and run {Commands.ForUser("approve")}.";
@@ -143,7 +186,7 @@ static partial class Gate
                 result.Deviations, result.Hunks, result.Summary, unconfirmed ? true : null));
             if (result.Passed)
             {
-                state.Passes.Add(new Pass(diffHash, intentHash, "review"));
+                state.Passes.Add(new Pass(diffHash, intentHash, "review", repo.StagedPatchId()));
                 repo.SaveState(state);
                 return null;
             }

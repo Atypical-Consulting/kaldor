@@ -32,6 +32,8 @@ static class CommandParser
     public sealed class Findings
     {
         public readonly List<CommitCall> Commits = [];
+        /// <summary>The directories of the <c>git push</c> calls.</summary>
+        public readonly List<string> Pushes = [];
         public bool HumanOnly;
         /// <summary>Full paths the command writes or deletes, as far as the parser can tell.</summary>
         public readonly List<string> Writes = [];
@@ -170,6 +172,7 @@ static class CommandParser
         {
             found.Commits.Add(new CommitCall(dir, skipsHooks || SkipsVerify(rest)));
         }
+        else if (sub == "push") found.Pushes.Add(dir);
         else if (!Builtins.Contains(sub) && aliases(dir).TryGetValue(sub, out var expansion))
         {
             if (expansion.StartsWith('!')) Scan(expansion[1..], dir, aliases, found, depth + 1);

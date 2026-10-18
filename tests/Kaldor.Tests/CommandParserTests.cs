@@ -116,4 +116,16 @@ public class CommandParserTests
     [InlineData("cat <<'EOF'\nbody\nEOF\ngit commit -m x")]
     [InlineData("cat <<EOF\n$(git commit -m x)\nEOF")]
     public void Detects_commits_around_heredocs_and_in_quoted_substitutions(string command) => Assert.Single(Find(command));
+
+    [Theory]
+    [InlineData("git push")]
+    [InlineData("git -C sub push origin main")]
+    [InlineData("bash -c \"git push\"")]
+    [InlineData("git add . && git push --force-with-lease")]
+    [InlineData("git p")]
+    public void Detects_push(string command) =>
+        Assert.Single(CommandParser.Analyze(command, Cwd, _ => new Dictionary<string, string> { ["p"] = "push" }).Pushes);
+
+    [Fact]
+    public void A_push_is_not_a_commit() => Assert.Empty(Find("git push"));
 }

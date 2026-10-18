@@ -30,9 +30,9 @@ static class Commands
     /// valid <c>KALDOR_TICKET</c>, which exists only once the person allowed the gate's permission prompt; it is returned,
     /// and the caller checks it still vouches for what the command is about to do (<see cref="Agreed"/>).
     /// </summary>
-    static Ticket? RequireTerminal(string cwd, string command)
+    static Ticket? RequireTerminal(string? cwd, string command)
     {
-        if (UseTicket(cwd, command) is { } ticket) return ticket;
+        if (cwd is not null && UseTicket(cwd, command) is { } ticket) return ticket;
         if (Environment.GetEnvironmentVariable("CLAUDECODE") == "1" || Console.IsInputRedirected) throw Refused(command);
         return null;
     }
@@ -232,7 +232,7 @@ static class Commands
         if (!Agreed(ticket, "intent confirm", Repo.Hash(intent), "Confirm it? Claude's commits will be reviewed against it.",
                 () => Console.WriteLine($"Frozen intent:\n\n{intent.Trim()}\n"))) return 1;
 
-        MarkConfirmed(repo, intent, ticket is not null);
+        MarkConfirmed(repo, intent, Via(ticket));
         Console.WriteLine("Intent confirmed. Claude's commits are now reviewed against it.");
         return 0;
     }
@@ -240,7 +240,7 @@ static class Commands
     /// <summary>The user reviews every draft in .kaldor/queue/ and accepts the ones their agent may later freeze.</summary>
     public static int ConfirmAll(string cwd)
     {
-        RequireTerminal(cwd, "intent confirm --all");
+        RequireTerminal(null, "intent confirm --all"); // no prompt route: one prompt cannot stand for one y/N per draft
         return ConfirmDrafts(RequireRepo(cwd), ConfirmByHuman);
     }
 
@@ -277,12 +277,12 @@ static class Commands
         return 0;
     }
 
-    internal static void MarkConfirmed(Repo repo, string intent, bool prompted = false)
+    internal static void MarkConfirmed(Repo repo, string intent, string via = "")
     {
         var hash = Repo.Hash(intent);
         repo.SaveState(repo.LoadState() with { ConfirmedHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent,
-            Summary: $"Confirmed by {Environment.UserName}{(prompted ? " (Claude Code prompt)" : "")}"));
+            Summary: $"Confirmed by {Environment.UserName}{via}"));
     }
 
     public static int ProposeAmendment(string cwd, string text)
@@ -304,13 +304,13 @@ static class Commands
         if (!Agreed(ticket, "intent amend --accept", Repo.Hash(text), "Add it to the frozen intent?",
                 () => Console.WriteLine($"Proposed amendment:\n\n{text}\n"))) return 1;
 
-        ApplyAmendment(repo, text, ticket is not null);
+        ApplyAmendment(repo, text, Via(ticket));
         Console.WriteLine("Amendment accepted; the intent is frozen and confirmed again.");
         return 0;
     }
 
     /// <summary>The user accepted the amendment, so the amended intent is confirmed as well as frozen.</summary>
-    internal static void ApplyAmendment(Repo repo, string text, bool prompted = false)
+    internal static void ApplyAmendment(Repo repo, string text, string via = "")
     {
         File.AppendAllText(repo.IntentPath, $"\n\n## Amendment ({DateTime.Now:yyyy-MM-dd HH:mm})\n{text}\n");
         var intent = repo.ReadIntent()!;
@@ -318,7 +318,7 @@ static class Commands
         repo.SaveState(repo.LoadState() with { IntentHash = hash, ConfirmedHash = hash });
         File.Delete(repo.AmendmentPath);
         repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", IntentHash: hash, Intent: intent,
-            Summary: prompted ? $"Accepted by {Environment.UserName} (Claude Code prompt)" : null));
+            Summary: via == "" ? null : $"Accepted by {Environment.UserName}{via}"));
     }
 
     /// <summary>The git pre-commit hook: same check as the gate, for commits the gate could not see.</summary>

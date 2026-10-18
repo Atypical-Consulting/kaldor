@@ -625,6 +625,31 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
+    public void The_rewritten_input_keeps_the_other_tool_fields()
+    {
+        FreezeIntent(confirm: false);
+        var input = JsonSerializer.Serialize(new
+        {
+            cwd = _root, tool_name = "Bash", tool_input = new { command = "kaldor intent confirm", timeout = 600000 },
+            hook_event_name = "PreToolUse", permission_mode = "default",
+        });
+        var output = new StringWriter();
+        Assert.Equal(0, Gate.Run(input, new StringWriter(), FakeReview, new Dictionary<string, string?>(), output));
+        var updated = System.Text.Json.Nodes.JsonNode.Parse(output.ToString())!["hookSpecificOutput"]!["updatedInput"]!;
+        Assert.Equal(600000, updated["timeout"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void Confirm_all_leaves_a_pending_ticket_alone()
+    {
+        FreezeIntent(confirm: false);
+        var ticket = Asked(AskHook("kaldor intent confirm")).Ticket;
+        Queue("a.md", Draft);
+        Assert.NotEqual(0, Cli(ticket, "intent", "confirm", "--all").Code);
+        Assert.Equal(0, Cli(ticket, "intent", "confirm").Code);
+    }
+
+    [Fact]
     public void A_ticket_for_one_command_does_not_run_another()
     {
         FreezeIntent(confirm: false);

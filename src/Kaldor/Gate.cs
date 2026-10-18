@@ -103,7 +103,8 @@ static partial class Gate
         if (found.HumanOnly)
             return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
                    $"Ask them to run it themselves as {Commands.ForUser("<command>")}. Run alone and exactly as `kaldor <command>`, " +
-                   "in a permission mode that asks, it shows the user a permission prompt instead.";
+                   "in a permission mode that asks, it shows the user a permission prompt instead, as long as there is something " +
+                   "to vouch for: a frozen and unchanged, unconfirmed intent, a staged diff or unreviewed commits, a proposed amendment.";
         if (found.ClearsClaudeCode)
             return "Clearing CLAUDECODE is not allowed in a Kaldor repository: Kaldor uses it to tell Claude's commands from yours.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
@@ -151,6 +152,9 @@ static partial class Gate
         if (Vouched(repo, name) is not var (subject, shown)) return null;
 
         var ticket = Commands.IssueTicket(repo, name, subject);
+        // The whole tool input, so its other fields (timeout, description...) survive whether Claude Code merges or replaces it.
+        var updated = hook["tool_input"]!.DeepClone();
+        updated["command"] = powerShell ? $"$env:KALDOR_TICKET='{ticket}'; {command}" : $"KALDOR_TICKET={ticket} {command}";
         return new JsonObject
         {
             ["hookSpecificOutput"] = new JsonObject
@@ -158,10 +162,7 @@ static partial class Gate
                 ["hookEventName"] = "PreToolUse",
                 ["permissionDecision"] = "ask",
                 ["permissionDecisionReason"] = shown,
-                ["updatedInput"] = new JsonObject
-                {
-                    ["command"] = powerShell ? $"$env:KALDOR_TICKET='{ticket}'; {command}" : $"KALDOR_TICKET={ticket} {command}",
-                },
+                ["updatedInput"] = updated,
             },
         }.ToJsonString();
     }

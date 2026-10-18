@@ -209,10 +209,10 @@ A two-column leaflet: a sticky contents column (248px) beside a single reading c
 
 Keyed paragraphs flow in an auto-fit grid (min 240px columns, 8px by 32px gap). Procedures use a strict margin column: a 40px track carries the step disc, the content sits in the second track, each step separated by a hairline.
 
-**Responsive (900px and below):** the contents column folds into a collapsible "CONTENTS" drawer on paper at the top of the page; the edition line and optional header links hide; reference tables restack as one block per row. The figure is never redrawn or squeezed: it keeps a minimum width of 860px and scrolls sideways inside its panel, with a sticky "Scroll the figure →" cue above it and the caption pinned left. A portrait redraw is deferred.
+**Responsive (900px and below):** the contents column folds into a collapsible "CONTENTS" drawer on paper at the top of the page; the edition line and optional header links hide; reference tables restack as one block per row. Each figure switches to its portrait drawing, 400 wide and capped at 440px on screen, so the whole mechanism shows without scrolling sideways.
 
 ### Named Rules
-**The Fixed Scale Rule.** Every figure is the same 1120×486 drawing at the same scale. Variation comes from which parts are lit, never from re-composition.
+**The Fixed Scale Rule.** There are two drawings, landscape 1120×486 and portrait 400×1240, each at its own fixed scale. Variation comes from which parts are lit, never from re-composition.
 
 ## Elevation & Depth
 
@@ -273,7 +273,7 @@ The same drawing with a `refused` state, never a new illustration. The stop lamp
 - **Do** keep green for lamps, lit discs, the commit in transit and focus; keep red for refusal only.
 - **Do** put anything copied or read closely (code, figures, the mobile contents) on paper with a hairline and 4px corners.
 - **Do** set code, paths, figure captions and table labels in Geist Mono; everything else in Hanken Grotesk.
-- **Do** let the figure scroll sideways on narrow screens, with the "Scroll the figure →" cue, rather than shrinking it.
+- **Do** switch to the portrait drawing on narrow screens rather than shrinking the landscape one.
 - **Do** keep every page readable without JavaScript and without motion.
 
 ### Don't:

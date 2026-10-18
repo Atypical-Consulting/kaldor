@@ -139,6 +139,20 @@ static partial class Gate
     static string OnRefs(Repo repo, string sha) =>
         repo.RefsContaining(sha) is { Length: > 0 } refs ? $" (on {string.Join(", ", refs.Take(3))})" : "";
 
+    /// <summary>
+    /// The lines of the staged diff when it may skip the model review: the rule is on, the user confirmed this very intent, no file is
+    /// binary, sensitive or otherwise uncountable, and every trivial commit under this intent (in any worktree) plus this one fits the budget.
+    /// </summary>
+    static (int Lines, int Used)? TrivialLines(Repo repo, Rules rules, State state, string intentHash)
+    {
+        if (rules.TrivialMaxLines <= 0 || state.ConfirmedHash != intentHash) return null;
+        var staged = repo.StagedLines();
+        if (staged.Length == 0 || staged.Any(f => f.Lines is null || rules.IsSensitive(f.Path))) return null;
+        var lines = staged.Sum(f => f.Lines!.Value);
+        var used = repo.ReadAllLogs().Where(x => x.Entry.Kind == "trivial" && x.Entry.IntentHash == intentHash).Sum(x => (long)(x.Entry.Lines ?? 0));
+        return used + lines <= rules.TrivialMaxLines ? (lines, (int)used) : null;
+    }
+
     /// <summary>Checks the staged diff of <paramref name="repo"/>. Returns null when the commit may go through.</summary>
     public static string? Evaluate(Repo repo, Reviewer review)
     {
@@ -180,6 +194,14 @@ static partial class Gate
             return "The user has not confirmed the frozen intent yet. Show it to them and ask them to run " +
                    $"{Commands.ForUser("intent confirm")}. Run `kaldor intent wait` (in the background) to know when they have, " +
                    "then commit again.";
+        if (TrivialLines(repo, rules, state, intentHash) is { } trivial)
+        {
+            repo.Log(new LogEntry(DateTimeOffset.Now, "trivial", "pass", diffHash, intentHash, Lines: trivial.Lines,
+                Summary: $"{trivial.Lines} line(s), {trivial.Used + trivial.Lines}/{rules.TrivialMaxLines} of this task's trivial budget; no model review."));
+            state.Passes.Add(repo.NewPass(diffHash, intentHash, "trivial"));
+            repo.SaveState(state);
+            return null;
+        }
         if (diff.Length > Claude.MaxDiffChars)
             return $"The staged diff is too large for one review ({diff.Length:N0} characters). Split it into smaller commits.";
 

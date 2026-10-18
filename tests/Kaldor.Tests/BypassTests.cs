@@ -97,6 +97,33 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
+    public void Intent_wait_returns_once_the_user_confirms()
+    {
+        const string Text = "# Intent\nGoal: change a.txt\n";
+        File.WriteAllText(_repo.IntentPath, Text);
+        Assert.Equal(0, Commands.Freeze(_root));
+        // The user confirms from another terminal while the agent waits.
+        var user = new Thread(() => { Thread.Sleep(300); Commands.MarkConfirmed(_repo, Text); });
+        user.Start();
+
+        Assert.Equal(0, Commands.WaitForConfirmation(_root, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(50)));
+        user.Join();
+    }
+
+    [Fact]
+    public void Intent_wait_gives_up_on_timeout_or_when_there_is_nothing_to_wait_for()
+    {
+        Assert.Throws<KaldorException>(() => Commands.WaitForConfirmation(_root, TimeSpan.FromSeconds(1)));
+
+        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: change a.txt\n");
+        Assert.Equal(0, Commands.Freeze(_root));
+        Assert.Equal(1, Commands.WaitForConfirmation(_root, TimeSpan.FromMilliseconds(200), TimeSpan.FromMilliseconds(50)));
+
+        File.WriteAllText(_repo.IntentPath, "# Intent\nGoal: something else\n");
+        Assert.Throws<KaldorException>(() => Commands.WaitForConfirmation(_root, TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
     public void Approve_refuses_without_a_terminal_before_printing_anything()
     {
         FreezeIntent();

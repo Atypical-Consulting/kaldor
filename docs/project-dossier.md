@@ -123,6 +123,8 @@ Creates `.kaldor/rules.json` with default rules (versioned), a `.kaldor/.gitigno
 
 You can force a rejected commit through with `kaldor approve`, from your own terminal. Two locks reserve this command, and `kaldor intent amend --accept`, for a human: the gate refuses any agent command line that runs them, and the command itself requires an interactive confirmation, which a non-interactive call from the agent cannot answer. Every forced approval is recorded in the history.
 
+The permission prompt is the one route through both locks (#37). When the agent runs `kaldor intent confirm`, `kaldor approve` or `kaldor intent amend --accept` alone and exactly as written, and Claude Code's `permission_mode` is `default`, `acceptEdits` or `plan`, the gate answers `ask`: Claude Code shows the user what they vouch for (the frozen intent, the staged diff stat and its latest deviations, or the amendment) and the command is rewritten to carry a random `KALDOR_TICKET`. Only the ticket's hash is kept in `state.json`, with the command, the hash of what it vouches for and a 5-minute expiry; a new prompt replaces it. The command accepts the ticket in place of a terminal, uses it up first, and refuses it for another command, after expiry, or once the intent, diff or amendment changed. The log says the confirmation came from a Claude Code prompt. Any other form, and `bypassPermissions`, `dontAsk` or a missing mode, keeps the refusal. Two Claude Code behaviours are assumed and not provable from the code: that `ask` always reaches the user in those modes, and that the model never sees the rewritten command.
+
 ## Commands
 
 Nine commands cover v1; day to day, you only type `kaldor report`, and `kaldor approve` when you disagree.

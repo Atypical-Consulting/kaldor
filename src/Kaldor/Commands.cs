@@ -16,9 +16,13 @@ static class Commands
         return repo;
     }
 
-    /// <summary>The form of a human-only command the user can paste: <c>kaldor</c> itself is on PATH only inside Claude Code.</summary>
+    /// <summary>
+    /// The form of a human-only command the user can paste (<c>kaldor</c> itself is on PATH only inside Claude Code), and
+    /// the prompt route for the commands the gate can ask about.
+    /// </summary>
     public static string ForUser(string command) =>
-        $"`dnx Atypical.Kaldor {command}` in a terminal outside Claude Code";
+        $"`dnx Atypical.Kaldor {command}` in a terminal outside Claude Code" +
+        (command == "intent confirm --all" ? "" : ", or ask Claude to run it: Claude Code will ask you to allow it");
 
     /// <summary>
     /// The second lock on human-only commands, checked before the command prints anything: it refuses inside a Claude Code

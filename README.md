@@ -56,10 +56,10 @@ Prefer typing `kaldor`? `dotnet tool install -g Atypical.Kaldor`. The examples b
 Work with Claude Code as usual. Kaldor steps in twice:
 
 - **Before the first edit** of a task, Claude writes `.kaldor/intent.md`, shows it to you, then freezes it with `kaldor intent freeze`. Edits are refused until then.
-- **Confirm the intent** with `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code, any time before Claude's first commit. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
+- **Confirm the intent** any time before Claude's first commit: Claude runs `kaldor intent confirm` and Claude Code asks you to allow it, showing the frozen intent; allowing it is your confirmation. Or run `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
 - **At each commit**, the reviewer runs (a few seconds). Accepted commits go through; rejected ones come back to Claude with the list of deviations.
 
-Your commands, from a terminal outside Claude Code (the `!` prefix has no terminal, and the confirmations below need one). Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`:
+Your commands, from a terminal outside Claude Code. Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`. For `intent confirm`, `approve` and `intent amend --accept` you can also ask Claude to run it: Claude Code will ask you to allow it, showing the intent, the staged diff or the amendment. The `!` prefix still cannot run them: it has no terminal and no prompt.
 
 | Command | What it does |
 | --- | --- |
@@ -71,7 +71,7 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |
 | `kaldor doctor` | Check the installation |
 
-`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they refuse to run inside a Claude Code session (`CLAUDECODE=1`) or without an interactive terminal.
+`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they refuse to run inside a Claude Code session (`CLAUDECODE=1`) or without an interactive terminal. The one way through is the permission prompt: when Claude runs one of them alone and exactly as written, in a permission mode that asks you (`default`, `acceptEdits`, `plan`), the hook asks you instead of refusing and hands the command a one-time ticket, valid 5 minutes, for that command and for what the prompt showed. In `bypassPermissions` or `dontAsk` mode, or in any other form, the refusal stays.
 
 ```text
 2026-10-17 23:30  review          BLOCKED

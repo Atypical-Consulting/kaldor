@@ -422,6 +422,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal("", output);
         Assert.DoesNotContain("Goal:", err);
         Assert.Contains("`dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code", err);
+        Assert.Contains("or ask Claude to run it: Claude Code will ask you to allow it", err);
     }
 
     /// <summary>The real CLI inside Claude Code (CLAUDECODE=1, stdin redirected), with <paramref name="ticket"/> as KALDOR_TICKET.</summary>
@@ -858,6 +859,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(1, code);
         Assert.Equal("", output);
         Assert.Contains("`dnx Atypical.Kaldor approve` in a terminal outside Claude Code", err);
+        Assert.Contains("or ask Claude to run it: Claude Code will ask you to allow it", err);
     }
 
     [Fact]

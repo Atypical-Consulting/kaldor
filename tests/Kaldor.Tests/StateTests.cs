@@ -33,6 +33,17 @@ public sealed class StateTests : IDisposable
     }
 
     [Fact]
+    public void A_state_without_a_pending_ticket_still_loads()
+    {
+        var repo = Repo.Find(_root)!;
+        Directory.CreateDirectory(repo.StateDir);
+        File.WriteAllText(repo.StatePath, """{"intent_hash":"sha256:x","passes":[],"confirmed_hash":null}""");
+        var state = repo.LoadState();
+        Assert.Equal("sha256:x", state.IntentHash);
+        Assert.Null(state.Pending);
+    }
+
+    [Fact]
     public void A_linked_worktree_has_its_own_state_and_report_sees_every_worktree()
     {
         Proc.Git(_root, "worktree", "add", "-q", Linked, "-b", "task");

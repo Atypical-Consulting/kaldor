@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Kaldor;
@@ -21,19 +22,66 @@ static class Commands
 
     /// <summary>
     /// The second lock on human-only commands, checked before the command prints anything: it refuses inside a Claude Code
-    /// session (a pseudo-terminal there is still the agent's) and without an interactive terminal.
+    /// session (a pseudo-terminal there is still the agent's) and without an interactive terminal. The one exception is a
+    /// valid <c>KALDOR_TICKET</c>, which exists only once the person allowed the gate's permission prompt; it is returned,
+    /// and the caller checks it still vouches for what the command is about to do (<see cref="Agreed"/>).
     /// </summary>
-    static void RequireTerminal(string command)
+    static Ticket? RequireTerminal(string cwd, string command)
     {
-        if (Environment.GetEnvironmentVariable("CLAUDECODE") == "1")
-            throw new KaldorException(
-                "This command runs inside a Claude Code session, where Claude could answer it. " +
-                $"Run {ForUser(command)}.");
-        if (Console.IsInputRedirected)
-            throw new KaldorException(
-                $"This command needs a person at an interactive terminal. Run {ForUser(command)} " +
-                "(the `!` prefix in Claude Code has no terminal).");
+        if (UseTicket(cwd, command) is { } ticket) return ticket;
+        if (Environment.GetEnvironmentVariable("CLAUDECODE") == "1" || Console.IsInputRedirected) throw Refused(command);
+        return null;
     }
+
+    static KaldorException Refused(string command) =>
+        Environment.GetEnvironmentVariable("CLAUDECODE") == "1"
+            ? new("This command runs inside a Claude Code session, where Claude could answer it. " +
+                  $"Run {ForUser(command)}.")
+            : new($"This command needs a person at an interactive terminal. Run {ForUser(command)} " +
+                  "(the `!` prefix in Claude Code has no terminal).");
+
+    /// <summary>
+    /// Stores a new one-time ticket for <paramref name="command"/>, vouching for <paramref name="subject"/>, in place of any
+    /// pending one, and returns it. Only its hash is kept; it expires after 5 minutes.
+    /// </summary>
+    internal static string IssueTicket(Repo repo, string command, string subject)
+    {
+        var ticket = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+        repo.SaveState(repo.LoadState() with { Pending = new Ticket(Repo.Hash(ticket), command, subject, DateTimeOffset.UtcNow.AddMinutes(5)) });
+        return ticket;
+    }
+
+    /// <summary>The pending ticket when <c>KALDOR_TICKET</c> matches it for this command and has not expired. Any ticket shown uses it up.</summary>
+    static Ticket? UseTicket(string cwd, string command)
+    {
+        var raw = Environment.GetEnvironmentVariable("KALDOR_TICKET");
+        if (string.IsNullOrEmpty(raw) || Repo.Find(cwd) is not { Enabled: true } repo) return null;
+        var state = repo.LoadState();
+        if (state.Pending is not { } ticket) return null;
+        // ponytail: load-then-save is not atomic; two runs racing with the same ticket can both act. Each acts on the
+        // subject the ticket names, so it only matters to whoever already holds the ticket. A lock file if that changes.
+        repo.SaveState(state with { Pending = null });
+        var hashOk = CryptographicOperations.FixedTimeEquals(
+            System.Text.Encoding.UTF8.GetBytes(Repo.Hash(raw)), System.Text.Encoding.UTF8.GetBytes(ticket.Hash));
+        return hashOk && ticket.Command == command && DateTimeOffset.UtcNow < ticket.Expires ? ticket : null;
+    }
+
+    /// <summary>
+    /// The person's yes to <paramref name="subject"/>: the ticket from the Claude Code prompt they allowed, which must vouch
+    /// for exactly that, or a y/N at the terminal after <paramref name="show"/>.
+    /// </summary>
+    static bool Agreed(Ticket? ticket, string command, string subject, string question, Action show)
+    {
+        if (ticket is not null) return ticket.Subject == subject ? true : throw Refused(command);
+        show();
+        return ConfirmByHuman(question);
+    }
+
+    static string Via(Ticket? ticket) => ticket is null ? "" : " (Claude Code prompt)";
+
+    /// <summary>What an <c>approve</c> ticket vouches for: the unreviewed commits, else the staged diff against the intent.</summary>
+    internal static string CommitsSubject(IEnumerable<string> shas) => Repo.Hash("commits\n" + string.Join('\n', shas));
+    internal static string DiffSubject(string intentHash, string diffHash) => Repo.Hash($"diff\n{intentHash}\n{diffHash}");
 
     static bool ConfirmByHuman(string question)
     {
@@ -168,7 +216,7 @@ static class Commands
     /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
     public static int ConfirmIntent(string cwd)
     {
-        RequireTerminal("intent confirm");
+        var ticket = RequireTerminal(cwd, "intent confirm");
         var repo = RequireRepo(cwd);
         var state = repo.LoadState();
         var intent = FrozenIntent(repo, state, "confirm");
@@ -177,10 +225,10 @@ static class Commands
             Console.WriteLine("This intent is already confirmed.");
             return 0;
         }
-        Console.WriteLine($"Frozen intent:\n\n{intent.Trim()}\n");
-        if (!ConfirmByHuman("Confirm it? Claude's commits will be reviewed against it.")) return 1;
+        if (!Agreed(ticket, "intent confirm", Repo.Hash(intent), "Confirm it? Claude's commits will be reviewed against it.",
+                () => Console.WriteLine($"Frozen intent:\n\n{intent.Trim()}\n"))) return 1;
 
-        MarkConfirmed(repo, intent);
+        MarkConfirmed(repo, intent, ticket is not null);
         Console.WriteLine("Intent confirmed. Claude's commits are now reviewed against it.");
         return 0;
     }
@@ -188,12 +236,12 @@ static class Commands
     /// <summary>The user reviews every draft in .kaldor/queue/ and accepts the ones their agent may later freeze.</summary>
     public static int ConfirmAll(string cwd)
     {
-        RequireTerminal("intent confirm --all");
+        RequireTerminal(cwd, "intent confirm --all");
         return ConfirmDrafts(RequireRepo(cwd), ConfirmByHuman);
     }
 
     /// <summary>Control characters other than newline and tab shown as escapes, so a draft cannot hide text from the person reading it.</summary>
-    static string Printable(string text) =>
+    internal static string Printable(string text) =>
         string.Concat(text.Select(c => char.IsControl(c) && c is not ('\n' or '\t') ? $"\\u{(int)c:x4}" : c.ToString()));
 
     internal static int ConfirmDrafts(Repo repo, Func<string, bool> ask)
@@ -225,11 +273,12 @@ static class Commands
         return 0;
     }
 
-    internal static void MarkConfirmed(Repo repo, string intent)
+    internal static void MarkConfirmed(Repo repo, string intent, bool prompted = false)
     {
         var hash = Repo.Hash(intent);
         repo.SaveState(repo.LoadState() with { ConfirmedHash = hash });
-        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent, Summary: $"Confirmed by {Environment.UserName}"));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent,
+            Summary: $"Confirmed by {Environment.UserName}{(prompted ? " (Claude Code prompt)" : "")}"));
     }
 
     public static int ProposeAmendment(string cwd, string text)
@@ -244,27 +293,28 @@ static class Commands
 
     public static int AcceptAmendment(string cwd)
     {
-        RequireTerminal("intent amend --accept");
+        var ticket = RequireTerminal(cwd, "intent amend --accept");
         var repo = RequireRepo(cwd);
         if (!File.Exists(repo.AmendmentPath)) throw new KaldorException("No amendment is waiting.");
         var text = File.ReadAllText(repo.AmendmentPath).Trim();
-        Console.WriteLine($"Proposed amendment:\n\n{text}\n");
-        if (!ConfirmByHuman("Add it to the frozen intent?")) return 1;
+        if (!Agreed(ticket, "intent amend --accept", Repo.Hash(text), "Add it to the frozen intent?",
+                () => Console.WriteLine($"Proposed amendment:\n\n{text}\n"))) return 1;
 
-        ApplyAmendment(repo, text);
+        ApplyAmendment(repo, text, ticket is not null);
         Console.WriteLine("Amendment accepted; the intent is frozen and confirmed again.");
         return 0;
     }
 
     /// <summary>The user accepted the amendment, so the amended intent is confirmed as well as frozen.</summary>
-    internal static void ApplyAmendment(Repo repo, string text)
+    internal static void ApplyAmendment(Repo repo, string text, bool prompted = false)
     {
         File.AppendAllText(repo.IntentPath, $"\n\n## Amendment ({DateTime.Now:yyyy-MM-dd HH:mm})\n{text}\n");
         var intent = repo.ReadIntent()!;
         var hash = Repo.Hash(intent);
         repo.SaveState(repo.LoadState() with { IntentHash = hash, ConfirmedHash = hash });
         File.Delete(repo.AmendmentPath);
-        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", IntentHash: hash, Intent: intent));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", IntentHash: hash, Intent: intent,
+            Summary: prompted ? $"Accepted by {Environment.UserName} (Claude Code prompt)" : null));
     }
 
     /// <summary>The git pre-commit hook: same check as the gate, for commits the gate could not see.</summary>
@@ -317,19 +367,21 @@ static class Commands
 
     public static int Approve(string cwd)
     {
-        RequireTerminal("approve");
+        var ticket = RequireTerminal(cwd, "approve");
         var repo = RequireRepo(cwd);
         var pending = repo.LoadState();
         var unreviewed = repo.UnreviewedCommits(Repo.PushRoots);
         if (unreviewed.Count > 0)
         {
-            Console.WriteLine("These commits reached HEAD without a Kaldor review:");
-            foreach (var c in unreviewed) Console.WriteLine($"  {c.Subject}");
-            Console.WriteLine("Look at them first, for example with `git show <sha>`.");
-            if (!ConfirmByHuman("Approve these commits without a review?")) return 1;
+            if (!Agreed(ticket, "approve", CommitsSubject(unreviewed.Select(c => c.Sha)), "Approve these commits without a review?", () =>
+                {
+                    Console.WriteLine("These commits reached HEAD without a Kaldor review:");
+                    foreach (var c in unreviewed) Console.WriteLine($"  {c.Subject}");
+                    Console.WriteLine("Look at them first, for example with `git show <sha>`.");
+                })) return 1;
             repo.ApproveCommits(pending, unreviewed);
             repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve",
-                Summary: $"Approved {unreviewed.Count} unreviewed commit(s) by {Environment.UserName}: {string.Join("; ", unreviewed.Select(c => c.Subject))}"));
+                Summary: $"Approved {unreviewed.Count} unreviewed commit(s) by {Environment.UserName}{Via(ticket)}: {string.Join("; ", unreviewed.Select(c => c.Subject))}"));
             Console.WriteLine("Approved. The agent can commit and push again.");
             return 0;
         }
@@ -339,15 +391,16 @@ static class Commands
         if (diff.Length == 0) throw new KaldorException("Nothing is staged.");
         var (diffHash, intentHash) = (Repo.Hash(diff), Repo.Hash(intent));
 
-        var last = repo.LatestReview(e => e.DiffHash == diffHash);
-        if (last is not null) Print(last);
-        if (!ConfirmByHuman("Force this staged diff through without a passing review?")) return 1;
+        if (!Agreed(ticket, "approve", DiffSubject(intentHash, diffHash), "Force this staged diff through without a passing review?", () =>
+            {
+                if (repo.LatestReview(e => e.DiffHash == diffHash) is { } last) Print(last);
+            })) return 1;
 
         var state = repo.LoadState();
         state.Passes.Add(repo.NewPass(diffHash, intentHash, "approve"));
         repo.SaveState(state with { IntentHash = state.IntentHash ?? intentHash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve", diffHash, intentHash, intent,
-            Summary: $"Forced by {Environment.UserName}"));
+            Summary: $"Forced by {Environment.UserName}{Via(ticket)}"));
         Console.WriteLine("Approved. The agent can now commit this exact staged diff.");
         return 0;
     }

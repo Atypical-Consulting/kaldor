@@ -424,6 +424,61 @@ public sealed class BypassTests : IDisposable
         Assert.Contains("`dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code", err);
     }
 
+    /// <summary>The real CLI inside Claude Code (CLAUDECODE=1, stdin redirected), with <paramref name="ticket"/> as KALDOR_TICKET.</summary>
+    (int Code, string Out, string Err) Cli(string? ticket, params string[] args) =>
+        Proc.Run("dotnet", [typeof(Commands).Assembly.Location, .. args], _root, stdin: "",
+            env: new Dictionary<string, string> { ["CLAUDECODE"] = "1", ["KALDOR_TICKET"] = ticket ?? "" });
+
+    static void AssertRefused((int Code, string Out, string Err) run)
+    {
+        Assert.Equal(1, run.Code);
+        Assert.Equal("", run.Out);
+        Assert.Contains("inside a Claude Code session", run.Err);
+    }
+
+    string IntentSubject => Repo.Hash(File.ReadAllText(_repo.IntentPath));
+
+    [Fact]
+    public void A_ticket_confirms_the_intent_once_without_a_terminal()
+    {
+        FreezeIntent(confirm: false);
+        var ticket = Commands.IssueTicket(_repo, "intent confirm", IntentSubject);
+        Assert.DoesNotContain(ticket, File.ReadAllText(_repo.StatePath));
+
+        var (code, output, _) = Cli(ticket, "intent", "confirm");
+        Assert.Equal(0, code);
+        Assert.DoesNotContain("[y/N]", output);
+        Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+        Assert.Null(_repo.LoadState().Pending);
+        Assert.Contains("(Claude Code prompt)", Cli(null, "report").Out);
+
+        // Used once: the same ticket again is refused.
+        _repo.SaveState(_repo.LoadState() with { ConfirmedHash = null });
+        AssertRefused(Cli(ticket, "intent", "confirm"));
+        Assert.Null(_repo.LoadState().ConfirmedHash);
+    }
+
+    [Theory]
+    [InlineData("none")]
+    [InlineData("wrong")]
+    [InlineData("expired")]
+    [InlineData("other command")]
+    [InlineData("intent changed")]
+    public void A_bad_ticket_is_refused_before_printing_anything(string kind)
+    {
+        FreezeIntent(confirm: false);
+        var ticket = Commands.IssueTicket(_repo, kind == "other command" ? "approve" : "intent confirm", IntentSubject);
+        if (kind == "expired")
+        {
+            var state = _repo.LoadState();
+            _repo.SaveState(state with { Pending = state.Pending! with { Expires = DateTimeOffset.UtcNow.AddSeconds(-1) } });
+        }
+        if (kind == "intent changed") FreezeIntent("# Intent\nGoal: change b.txt\n", confirm: false);
+
+        AssertRefused(Cli(kind switch { "none" => null, "wrong" => new string('0', 64), _ => ticket }, "intent", "confirm"));
+        Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+    }
+
     const string Draft = "# Intent\nGoal: change a.txt\n";
 
     void Queue(string name, string text)

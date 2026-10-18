@@ -59,8 +59,28 @@ static class Proc
     }
 }
 
-sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, string[] BlockOn, string Confirm = "before")
+sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, string[] BlockOn, string Confirm = "before", int TrivialMaxLines = 0)
 {
+    /// <summary>True when <paramref name="path"/> matches a <c>sensitive</c> glob (<c>**/</c> any directories, <c>**</c> anything, <c>*</c> and <c>?</c> within a name).</summary>
+    public bool IsSensitive(string path) => Sensitive.Any(g => Glob(g).IsMatch(path));
+
+    static System.Text.RegularExpressions.Regex Glob(string glob)
+    {
+        var sb = new System.Text.StringBuilder("^");
+        for (var i = 0; i < glob.Length; i++)
+        {
+            if (glob.AsSpan(i).StartsWith("**/")) { sb.Append("(?:.*/)?"); i += 2; }
+            else if (glob.AsSpan(i).StartsWith("**")) { sb.Append(".*"); i++; }
+            else if (glob[i] == '*') sb.Append("[^/]*");
+            else if (glob[i] == '?') sb.Append("[^/]");
+            else sb.Append(System.Text.RegularExpressions.Regex.Escape(glob[i].ToString()));
+        }
+        // Ignore case: on a case-insensitive file system a path can be spelled around the glob.
+        const System.Text.RegularExpressions.RegexOptions o = System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.Singleline;
+        return new(sb.Append('$').ToString(), o);
+    }
+
     /// <summary>True when commits may be reviewed before the user confirms the intent (unattended sessions).</summary>
     public bool ConfirmAfter => Confirm == "after";
 
@@ -104,7 +124,7 @@ sealed record ReviewResult(string Verdict, string[] Deviations, Hunk[] Hunks, st
 sealed record LogEntry(
     DateTimeOffset At, string Kind, string? Verdict = null, string? DiffHash = null, string? IntentHash = null,
     string? Intent = null, string[]? Deviations = null, Hunk[]? Hunks = null, string? Summary = null,
-    bool? Unconfirmed = null);
+    bool? Unconfirmed = null, int? Lines = null);
 
 /// <summary>
 /// A git repository: <c>.kaldor/</c> in the work tree holds the rules and the intent; the state and the history live
@@ -230,6 +250,27 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         var diff = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "-U5", "--", .. hidden.Select(p => ":(exclude,literal)" + p)]);
         if (hidden.Count == 0) return diff;
         return diff + Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--text", "-U5", "--", .. hidden.Select(p => ":(literal)" + p)]);
+    }
+
+    /// <summary>
+    /// Lines changed (added plus deleted) per staged file, from the same safe git flags as <see cref="StagedDiff"/>. Null when the
+    /// count cannot stand for the change: a binary file, a mode or type change (exec bit, symlink, submodule), or no line change at all.
+    /// </summary>
+    public (string Path, int? Lines)[] StagedLines()
+    {
+        string[] flags = ["--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "--no-renames"];
+        // ":oldmode newmode oldsha newsha status" NUL path NUL
+        var raw = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--raw", "-z"]).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var odd = new HashSet<string>();
+        for (var i = 0; i + 1 < raw.Length; i += 2)
+        {
+            var m = raw[i].TrimStart(':').Split(' ');
+            if (m[0] is "120000" or "160000" || m[1] is "120000" or "160000" || (m[4] is not ("A" or "D") && m[0] != m[1])) odd.Add(raw[i + 1]);
+        }
+        return Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--numstat", "-z"]).Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Select(f => f.Split('\t', 3))
+            .Select(f => (f[2], int.TryParse(f[0], out var a) && int.TryParse(f[1], out var d) && a + d > 0 && !odd.Contains(f[2]) ? (int?)(a + d) : null))
+            .ToArray();
     }
 
     /// <summary>The staged paths printed as binary (numstat <c>-</c>) although neither the staged nor the committed content has a NUL byte.</summary>

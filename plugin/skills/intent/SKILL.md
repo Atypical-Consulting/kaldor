@@ -22,6 +22,10 @@ conversation, so the intent must say everything the reviewer needs.
    Expected files: <files you expect to change, tests included>
    ```
 
+   For a small fix a one-line `Goal: <one sentence>` is enough; the other lines add nothing a reviewer needs there.
+   If the user set `"trivial_max_lines"` in `rules.json`, small confirmed changes outside `sensitive` paths commit without a model review,
+   up to that many lines in total for the whole intent (splitting the change into commits does not reset it).
+
 3. Show the intent to the user and wait for their agreement or correction.
 4. Freeze it: `kaldor intent freeze`. From then on, edits are allowed.
 5. Ask the user to confirm it by running `dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code

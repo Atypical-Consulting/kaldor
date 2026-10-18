@@ -302,7 +302,7 @@ static class Commands
         var verdict = e.Verdict switch { "pass" => "ACCEPTED", "block" => "BLOCKED", "approve" => "FORCED", _ => "" };
         var where = otherWorktree is null ? "" : $"  [worktree {otherWorktree}]";
         Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}{(e.Unconfirmed == true ? " UNCONFIRMED" : "")}{where}");
-        if (e.Kind is not ("review" or "dry-run" or "approve") && e.Intent is not null)
+        if (e.Kind is not ("review" or "dry-run" or "approve" or "trivial") && e.Intent is not null)
             Console.WriteLine($"  intent     {FirstLine(e.Intent)}");
         foreach (var d in e.Deviations ?? []) Console.WriteLine($"  deviation  {d}");
         var hunks = e.Hunks ?? [];

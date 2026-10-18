@@ -114,7 +114,7 @@ static partial class Gate
             var repo = Repo.Find(commit.Dir);
             if (repo is not { Enabled: true }) continue;
             if (commit.SkipsHooks)
-                return "Skipping git hooks (--no-verify, -n, core.hooksPath) is not allowed in a Kaldor repository.";
+                return "Skipping git hooks or changing what git commits (--no-verify, -n, core.hooksPath, GIT_* variables, --git-dir, --work-tree, --index-file) is not allowed in a Kaldor repository.";
             if (Evaluate(repo, review) is { } reason) return reason;
         }
         foreach (var dir in found.Pushes)
@@ -235,6 +235,10 @@ static partial class Gate
         if (intentHash != state.IntentHash)
             return "The intent changed after it was frozen. Restore it, or propose the change with " +
                    "`kaldor intent amend \"<text>\"` and ask the user to accept it.";
+
+        if (!repo.HookRuns)
+            return "Git would not run Kaldor's pre-commit hook here (core.hooksPath, a replaced or non-executable hook). Ask the user to run " +
+                   $"{Commands.ForUser("init")}, or to add Kaldor's line to their own hook.";
 
         if (CheckHistory(repo, Repo.CommitRoots) is { } unreviewed) return unreviewed;
 

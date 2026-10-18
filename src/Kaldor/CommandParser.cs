@@ -169,7 +169,7 @@ static class CommandParser
             }
             else if (name == "git")
             {
-                ScanGit(rest, cwd, aliases, found, depth);
+                ScanGit(rest, cwd, aliases, found, depth, segment.Take(i).Any(w => w.StartsWith("GIT_", StringComparison.OrdinalIgnoreCase) && IsAssignment(w)));
             }
             else if (KaldorArgs(name, rest) is { } toolArgs && IsHumanOnly(toolArgs))
             {
@@ -223,17 +223,19 @@ static class CommandParser
         catch (ArgumentException) { return path; }
     }
 
-    static void ScanGit(List<string> args, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
+    static void ScanGit(List<string> args, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth, bool gitEnv = false)
     {
         var dir = cwd;
-        var skipsHooks = false;
+        var skipsHooks = gitEnv; // GIT_INDEX_FILE, GIT_CONFIG_*...: git commits something other than what the gate checked
         var j = 0;
         while (j < args.Count && args[j].StartsWith('-'))
         {
             var a = args[j];
             if (a == "-C" && j + 1 < args.Count) { dir = Path.GetFullPath(Path.Combine(dir, args[j + 1])); j += 2; }
             else if (a == "-c" && j + 1 < args.Count) { skipsHooks |= args[j + 1].StartsWith("core.hooksPath", StringComparison.OrdinalIgnoreCase); j += 2; }
-            else if (a is "--git-dir" or "--work-tree" or "--namespace" or "--exec-path" && j + 1 < args.Count) j += 2;
+            else if (a is "--git-dir" or "--work-tree" or "--index-file") { skipsHooks = true; j += 2; }
+            else if (a.StartsWith("--git-dir=") || a.StartsWith("--work-tree=") || a.StartsWith("--index-file=")) { skipsHooks = true; j++; }
+            else if (a is "--namespace" or "--exec-path" && j + 1 < args.Count) j += 2;
             else j++;
         }
         if (j >= args.Count) return;

@@ -112,11 +112,13 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | `git -C`, `cd x &&`, `bash -c`, aliases | The hook parses the command line itself |
 | Committing from a script | The git pre-commit hook runs the same check for any commit made with `git commit` inside Claude Code; other ways of making a commit are covered by the history check below |
 | `git cherry-pick`, `revert`, `am`, `rebase`, `merge`, `commit-tree` + `update-ref` | Not refused, but checked afterwards: at the next commit or push through the Bash tool, a commit on `HEAD` with no recorded review (matched by `git patch-id`) is refused until you run `kaldor approve`. Commits from remote-tracking branches, rebased reviewed commits and clean merges pass |
-| `--no-verify`, `core.hooksPath` | Refused |
+| `--no-verify`, `core.hooksPath` (also set with `git config`), `GIT_*` variables, `--git-dir`, `--work-tree` or `--index-file` on a commit | Refused: the command is refused, and so is any commit while git would not run Kaldor's `pre-commit` hook (rerun `kaldor init`) |
+| Hiding the change from the reviewer (textconv, `-diff` or `binary` attributes, `core.attributesFile`, `core.fsmonitor`) | Kaldor's own git calls ignore these: the reviewer gets the staged change as text (a file that really holds NUL bytes stays `Binary files differ`) |
 | Breaking the hook | `onFailure: "block"`: a failing or timed-out hook blocks |
 
 ### Known limits
 
+- A script or an interpreter can still set `GIT_*` variables or git settings for its own commits: the gate only sees the command line.
 - An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
 - Code the agent writes and runs (a script, `python -c`) can clear `CLAUDECODE` and run a human-only command in a pseudo-terminal, as it can write `.git/kaldor/state.json`: the gate only sees the command line (so does a command that starts a clean environment, such as `ssh`, `docker run`, `systemctl --user` or `sudo -u`). A terminal you start from inside a Claude Code session inherits the variable and is refused too.

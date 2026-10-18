@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.1.1...v1.2.0) (2026-10-18)
+
+
+### Added
+
+* commits wait for the user to confirm the frozen intent ([#25](https://github.com/Atypical-Consulting/kaldor/issues/25)) ([578f6bf](https://github.com/Atypical-Consulting/kaldor/commit/578f6bf4eaab586254b63e24650c3482d06e839e))
+
 ## [1.1.1](https://github.com/Atypical-Consulting/kaldor/compare/v1.1.0...v1.1.1) (2026-10-17)
 
 

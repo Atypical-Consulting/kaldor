@@ -248,12 +248,13 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     /// The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE. Textconv and external
     /// diff drivers are off. A text file that an attribute marks <c>-diff</c> or <c>binary</c> (<c>.git/info/attributes</c> cannot be
     /// switched off) is printed as text, so it is not reduced to <c>Binary files differ</c>; a file that really holds NUL bytes stays binary.
+    /// With <paramref name="pathspec"/> the diff is restricted to it; without, the output is exactly the whole staged diff (it is hashed).
     /// </summary>
-    public string StagedDiff()
+    public string StagedDiff(string? pathspec = null)
     {
         string[] flags = ["--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none"];
-        var hidden = HiddenText(flags);
-        var diff = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "-U5", "--", .. hidden.Select(p => ":(exclude,literal)" + p)]);
+        var hidden = HiddenText(flags, pathspec);
+        var diff = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "-U5", "--", .. (pathspec is null ? [] : new[] { pathspec }), .. hidden.Select(p => ":(exclude,literal)" + p)]);
         if (hidden.Count == 0) return diff;
         return diff + Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--text", "-U5", "--", .. hidden.Select(p => ":(literal)" + p)]);
     }
@@ -280,9 +281,9 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     }
 
     /// <summary>The staged paths printed as binary (numstat <c>-</c>) although neither the staged nor the committed content has a NUL byte.</summary>
-    List<string> HiddenText(string[] flags)
+    List<string> HiddenText(string[] flags, string? pathspec)
     {
-        var fields = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--numstat", "--no-renames", "-z"]).Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        var fields = Proc.GitSafe(Root, ["--no-replace-objects", "diff", .. flags, "--numstat", "--no-renames", "-z", .. (pathspec is null ? [] : new[] { "--", pathspec })]).Split('\0', StringSplitOptions.RemoveEmptyEntries);
         var hidden = new List<string>();
         foreach (var f in fields.Where(f => f.StartsWith("-\t-\t", StringComparison.Ordinal)))
         {

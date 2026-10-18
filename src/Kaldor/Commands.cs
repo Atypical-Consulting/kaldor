@@ -32,7 +32,8 @@ static class Commands
             File.WriteAllText(repo.RulesPath, JsonSerializer.Serialize(Rules.Default, Repo.Json));
         // Everything but the rules is per-machine state: intent, verdict cache and review history.
         File.WriteAllText(Path.Combine(repo.Dir, ".gitignore"), "*\n!.gitignore\n!rules.json\n");
-        Console.WriteLine($"Created {Path.GetRelativePath(cwd, repo.RulesPath)} (commit it with the repository).");
+        Console.WriteLine($"Created {Path.GetRelativePath(cwd, repo.RulesPath)}. Commit .kaldor/ yourself, from your own " +
+                          "terminal: Kaldor refuses Claude's commits until a task intent is frozen and confirmed.");
 
         var hook = Path.GetFullPath(Path.Combine(repo.Root, Proc.Git(repo.Root, "rev-parse", "--git-path", "hooks/pre-commit").Trim()));
         if (File.Exists(hook) && !File.ReadAllText(hook).Contains("Atypical.Kaldor"))

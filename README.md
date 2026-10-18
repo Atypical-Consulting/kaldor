@@ -47,6 +47,8 @@ dnx Atypical.Kaldor init     # creates .kaldor/rules.json and a git pre-commit h
 git add .kaldor && git commit -m "chore: enable Kaldor"
 ```
 
+Make this commit yourself, not through Claude. Kaldor refuses Claude's commits until a task intent is frozen and confirmed, so enabling Kaldor, like any later change to the rules, stays your decision.
+
 Prefer typing `kaldor`? `dotnet tool install -g Atypical.Kaldor`. The examples below use that short form.
 
 ## Day to day

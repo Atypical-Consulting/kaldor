@@ -106,7 +106,7 @@ For your own commands, `dnx Atypical.Kaldor report` works as is. If you prefer t
 kaldor init
 ```
 
-Creates `.kaldor/rules.json` with default rules (versioned), a `.kaldor/.gitignore` that keeps everything else local, and the git `pre-commit` backstop. Commit `.kaldor/rules.json` yourself: changing the rules is your decision, so the agent's commits of it are reviewed like any other.
+Creates `.kaldor/rules.json` with default rules (versioned), a `.kaldor/.gitignore` that keeps everything else local, and the git `pre-commit` backstop. Commit `.kaldor/` yourself, from your own terminal: Kaldor refuses the agent's commits until a task intent is frozen and confirmed, so enabling Kaldor and changing the rules stay your decision.
 
 **The flow of a task**
 

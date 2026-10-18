@@ -64,7 +64,7 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
 
 sealed record Pass(string DiffHash, string IntentHash, string By);
 
-sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null)
+sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, List<string>? Preconfirmed = null)
 {
     public static State Empty => new(null, []);
 }
@@ -97,6 +97,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     public string Root { get; } = root;
     public string Dir => Path.Combine(Root, ".kaldor");
+    public string QueueDir => Path.Combine(Dir, "queue");
     public string RulesPath => Path.Combine(Dir, "rules.json");
     public string IntentPath => Path.Combine(Dir, "intent.md");
     /// <summary><c>&lt;git-common-dir&gt;/kaldor/</c>, or <c>.../kaldor/worktrees/&lt;id&gt;/</c> for a linked worktree.</summary>

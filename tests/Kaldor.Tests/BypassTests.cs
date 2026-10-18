@@ -338,6 +338,119 @@ public sealed class BypassTests : IDisposable
         Assert.Contains("`dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code", err);
     }
 
+    const string Draft = "# Intent\nGoal: change a.txt\n";
+
+    void Queue(string name, string text)
+    {
+        Directory.CreateDirectory(_repo.QueueDir);
+        File.WriteAllText(Path.Combine(_repo.QueueDir, name), text);
+    }
+
+    [Fact]
+    public void A_preconfirmed_intent_commits_without_confirmation_and_only_once()
+    {
+        Queue("a.md", Draft);
+        Assert.Equal(0, Commands.ConfirmDrafts(_repo, _ => true));
+        FreezeIntent(Draft, confirm: false);
+        Stage();
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+        Assert.Empty(_repo.LoadState().Preconfirmed!);
+
+        Proc.Git(_root, "commit", "-q", "-m", "task one");
+        // AC4: the same text for a second task needs a new confirmation.
+        File.WriteAllText(_repo.IntentPath, Draft + "second\n");
+        Commands.Freeze(_root);
+        File.WriteAllText(_repo.IntentPath, Draft);
+        Commands.Freeze(_root);
+        Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+        Stage("more");
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("The user has not confirmed the frozen intent yet", err);
+    }
+
+    [Fact]
+    public void An_intent_that_differs_by_one_byte_is_not_preconfirmed()
+    {
+        Queue("a.md", Draft);
+        Commands.ConfirmDrafts(_repo, _ => true);
+        FreezeIntent(Draft + " ", confirm: false);
+        Stage();
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("The user has not confirmed the frozen intent yet", err);
+        Assert.Equal(0, _reviews);
+    }
+
+    [Fact]
+    public void Declined_drafts_are_not_preconfirmed_and_confirm_all_logs_one_entry_per_accepted_draft()
+    {
+        Queue("a.md", Draft);
+        Queue("b.md", "# Intent\nGoal: other\n");
+        Assert.Equal(0, Commands.ConfirmDrafts(_repo, _ => true));
+        Assert.Equal(2, _repo.ReadAllLogs().Count(x => x.Entry.Kind == "confirm" && x.Entry.Summary!.StartsWith("Pre-confirmed by")));
+
+        var asked = 0;
+        Commands.ConfirmDrafts(_repo, _ => asked++ == 1); // accepts only b.md, and replaces the earlier set
+        Assert.Equal([Repo.Hash("# Intent\nGoal: other\n")], _repo.LoadState().Preconfirmed);
+        FreezeIntent(Draft, confirm: false);
+        Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+    }
+
+    [Fact]
+    public void Confirm_all_with_an_empty_queue_exits_1()
+    {
+        Assert.Equal(1, Commands.ConfirmDrafts(_repo, _ => true));
+    }
+
+    [Fact]
+    public void Agent_cannot_confirm_all()
+    {
+        Assert.Equal(2, Commit("kaldor intent confirm --all").Code);
+        Assert.Equal(2, Commit("dnx --yes Atypical.Kaldor intent confirm --all").Code);
+        Assert.Equal(2, Commit("ls && kaldor intent confirm --all").Code);
+
+        Queue("a.md", Draft);
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm", "--all"], _root, stdin: "y\n");
+        Assert.Equal(1, code);
+        Assert.Equal("", output);
+        Assert.Contains("intent confirm --all", err);
+        Assert.Null(_repo.LoadState().Preconfirmed);
+    }
+
+    [Fact]
+    public void The_agent_can_write_queue_drafts_but_nothing_else_in_kaldor()
+    {
+        string P(string rel) => Path.Combine(_root, rel);
+        Assert.Equal(0, Hook("Write", new { file_path = P(".kaldor/queue/a.md"), content = "x" }).Code);
+        Assert.Equal(2, Commit("cp a.txt .kaldor/queue/b.md").Code); // shell writes could plant a link: Edit and Write only
+        Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/a.json"), content = "x" }).Code);
+        Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/sub/a.md"), content = "x" }).Code);
+        Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/queue/../rules.json"), content = "x" }).Code);
+        Assert.Equal(2, Hook("Write", new { file_path = P(".kaldor/rules.json"), content = "x" }).Code);
+        Assert.Equal(2, Commit("cp a.txt .kaldor/queue/../rules.json").Code);
+        Assert.Equal(2, Commit("ln -s ../.git/kaldor .kaldor/queue").Code);
+        Assert.Equal(2, Commit("ln -s ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("cp -s ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("ln ../.git/kaldor/state.json .kaldor/queue/x.md").Code);
+        Assert.Equal(2, Commit("echo x > .kaldor/queue/x.md").Code);
+    }
+
+    [Fact]
+    public void A_queue_draft_is_never_a_staged_kaldor_change()
+    {
+        FreezeIntent();
+        Queue("a.md", Draft);
+        Stage();
+        Proc.Git(_root, "add", "-A"); // the draft is gitignored, so it is not staged
+        Assert.DoesNotContain("queue", Proc.Git(_root, "diff", "--cached", "--name-only"));
+        Assert.False(_repo.StagedKaldorChange());
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+    }
+
     [Fact]
     public void Intent_wait_returns_once_the_user_confirms()
     {

@@ -65,6 +65,7 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 | --- | --- |
 | `kaldor report [count]` | The latest reviews from every worktree: intent, deviations, hunks worth reading |
 | `kaldor intent confirm` | Confirm the intent Claude froze; its commits wait for it |
+| `kaldor intent confirm --all` | Confirm every draft in `.kaldor/queue/` up front, for sessions that cover several tasks; each is used once when a task freezes exactly that text |
 | `kaldor approve` | Force the staged diff through when you disagree with the reviewer |
 | `kaldor intent amend --accept` | Accept a change to the intent that Claude proposed |
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |

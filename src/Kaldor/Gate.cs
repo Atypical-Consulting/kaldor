@@ -6,7 +6,7 @@ namespace Kaldor;
 /// The <c>PreToolUse</c> hook. Exit 0 lets the tool call through, exit 2 blocks it and shows stderr to Claude.
 /// Any other failure exits 1, and <c>onFailure: "block"</c> turns that into a block as well.
 /// </summary>
-static class Gate
+static partial class Gate
 {
     public const string NoIntent =
         "No frozen intent for this task. Write .kaldor/intent.md (goal, expected behavior, must not touch, expected " +
@@ -51,6 +51,9 @@ static class Gate
             return frozen && repo.TaskInProgress()
                 ? "The intent is frozen and the task is in progress. Propose the change with `kaldor intent amend \"<text>\"`; only the user can accept it."
                 : null;
+        // Drafts for `kaldor intent confirm --all`: harmless until the user accepts them. Not through a link, which could point at state.
+        // Only through the Edit and Write tools, never Bash: a link or hard link planted by a shell command could lead into the state.
+        if (QueueDraft().IsMatch(rel) && new DirectoryInfo(repo.QueueDir).LinkTarget is null && new FileInfo(full).LinkTarget is null) return null;
         if (rel.StartsWith(".kaldor/", StringComparison.Ordinal))
             return "Files in .kaldor/ other than intent.md are written by the kaldor tool only.";
         return frozen ? null : NoIntent;
@@ -58,6 +61,9 @@ static class Gate
 
     const string StateIsKaldors =
         "Kaldor's state (.git/kaldor/) and the files in .kaldor/ other than intent.md are written by the kaldor tool only.";
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\.kaldor/queue/[^/]+\.md$")]
+    private static partial System.Text.RegularExpressions.Regex QueueDraft();
 
     static string[] Parts(string path) => path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 
@@ -84,7 +90,7 @@ static class Gate
     {
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
-            return "`kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` are reserved for the user. " +
+            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
                    $"Ask them to run it themselves as {Commands.ForUser("<command>")}.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 

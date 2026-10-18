@@ -7,6 +7,7 @@ const string Usage = """
       kaldor init                       enable Kaldor in this repository
       kaldor intent freeze              freeze .kaldor/intent.md (the agent runs it)
       kaldor intent confirm             confirm the frozen intent; commits wait for it (you only)
+      kaldor intent confirm --all       confirm every draft in .kaldor/queue/ up front (you only)
       kaldor intent wait [--timeout s]  wait until the user confirms the intent (the agent; default 540 s)
       kaldor intent amend "<text>"      propose a change to the frozen intent (the agent)
       kaldor intent amend --accept      accept the proposed change (you only)
@@ -31,6 +32,7 @@ try
         ["init"] => Commands.Init(cwd),
         ["intent", "freeze"] => Commands.Freeze(cwd),
         ["intent", "confirm"] => Commands.ConfirmIntent(cwd),
+        ["intent", "confirm", "--all"] => Commands.ConfirmAll(cwd),
         ["intent", "wait"] => Commands.WaitForConfirmation(cwd, TimeSpan.FromSeconds(540)),
         ["intent", "wait", "--timeout", var s] when int.TryParse(s, out var seconds) && seconds > 0 =>
             Commands.WaitForConfirmation(cwd, TimeSpan.FromSeconds(seconds)),

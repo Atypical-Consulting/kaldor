@@ -115,6 +115,9 @@ static class Gate
         if (diff.Length == 0) return null;
         var diffHash = Repo.Hash(diff);
         if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
+        if (repo.StagedKaldorChange())
+            return "This commit changes Kaldor's own files in .kaldor/. Only the user can allow that: ask them to review " +
+                   $"the staged diff and run {Commands.ForUser("approve")}.";
         var rules = repo.LoadRules();
         var unconfirmed = state.ConfirmedHash != intentHash;
         if (unconfirmed && !rules.ConfirmAfter)

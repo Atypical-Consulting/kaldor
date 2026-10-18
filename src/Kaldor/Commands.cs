@@ -327,6 +327,8 @@ static class Commands
                 else Line(true, "rules.json is valid");
             }
             catch (JsonException ex) { Line(false, "rules.json is valid", ex.Message); }
+            if (repo.CommittedRules() is { } committed && File.Exists(repo.RulesPath) && File.ReadAllText(repo.RulesPath) != committed)
+                Console.WriteLine("warn  rules.json has uncommitted changes; they take effect once you commit them");
         }
         Line(repo.HookInstalled, "git pre-commit hook installed", "Run `kaldor init`.");
         Console.WriteLine($"      intent: {(repo.LoadState().IntentHash is null ? "none frozen" : "frozen")}");

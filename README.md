@@ -93,7 +93,7 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 }
 ```
 
-**Unattended sessions.** Set `"confirm": "after"` in `.kaldor/rules.json` (the default is `"before"`) when nobody can run `kaldor intent confirm` during a session, for example under `auto-dev`. Commits on an unconfirmed intent then go to the independent reviewer instead of being refused, and each review is logged as unconfirmed. The review is kept; what moves to after the session is your check that the intent itself was right: `kaldor report --unconfirmed` lists those reviews. Only you can set it, since the agent cannot write `.kaldor/rules.json`; a change committed on a branch takes effect when that branch is checked out.
+**Unattended sessions.** Set `"confirm": "after"` in `.kaldor/rules.json` (the default is `"before"`) when nobody can run `kaldor intent confirm` during a session, for example under `auto-dev`. Commits on an unconfirmed intent then go to the independent reviewer instead of being refused, and each review is logged as unconfirmed. The review is kept; what moves to after the session is your check that the intent itself was right: `kaldor report --unconfirmed` lists those reviews. Only you can set it: the gate applies the rules committed at `HEAD`, so an edit to `.kaldor/rules.json` (by any command) takes effect once committed, and a commit that changes `.kaldor/` needs your `kaldor approve`. A change committed on a branch takes effect when that branch is checked out.
 
 `.kaldor/intent.md` is local and ignored by git. The verdicts, the frozen intent hash and the history live in the git directory (`.git/kaldor/`, one folder per worktree), so `git clean` and `git worktree remove` leave them alone and `kaldor report` shows every worktree. The agent can write `intent.md` only before the intent is frozen; its edit tools and the shell writes the gate recognises (redirections, `tee`, `cp`, `mv`, `rm`, `sed -i`, `Set-Content`…) are refused on everything else in `.kaldor/` and `.git/kaldor/`.
 
@@ -104,7 +104,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 | Shortcut | Why it fails |
 | --- | --- |
 | Framing the reviewer | The hook launches the reviewer with a fixed prompt; the agent never writes a word of it |
-| Writing its own verdict | The verdict is produced inside the hook's process; the state in `.git/kaldor/` and the rules are closed to the agent's edits and shell writes |
+| Writing its own verdict | The verdict is produced inside the hook's process; the state in `.git/kaldor/` is closed to the agent's edits and shell writes, and the rules are read from `HEAD`, so changing them needs a commit that only your `kaldor approve` lets through |
 | Freezing an intent you never saw | Commits wait until you run `kaldor intent confirm` |
 | Rewriting the intent | Frozen by hash; changes go through an amendment only you can accept |
 | Changing code after review | Verdicts are bound to the hash of the staged diff |

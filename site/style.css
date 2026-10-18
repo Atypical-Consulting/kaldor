@@ -67,7 +67,6 @@ code { font-size: .86em; background: var(--well); padding: 1px 5px; border-radiu
 .disc.go { background: var(--green); border-color: var(--green); color: #fff; }
 .disc.stop { background: var(--red); border-color: var(--red); color: #fff; }
 .contents-mobile { display: none; }
-.scroll-cue { display: none; }
 
 main { padding: 36px var(--gutter) 0 24px; min-width: 0; }
 section { padding: 8px 0 56px; border-bottom: 1px solid var(--line); }
@@ -89,6 +88,7 @@ p { margin: 0 0 14px; }
 figure { margin: 0; }
 .fig { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 10px 10px 14px; }
 .fig svg { display: block; width: 100%; height: auto; }
+.fig .portrait { display: none; }
 .fig figcaption { font: 500 12px/1.4 var(--mono); letter-spacing: .06em; color: var(--mid); padding: 6px 12px 0; text-transform: uppercase; }
 .flow { color: var(--ink); }
 .flow .soft { stroke: #9a9ba0; }
@@ -107,6 +107,7 @@ figure { margin: 0; }
 .flow .commit { fill: var(--paper); }
 .flow .commit.new { fill: var(--green); stroke: var(--green); }
 .flow .packet { fill: var(--green); stroke: none; offset-path: path("M224 158 H724 L850 138 V182 H724 L668 212 V378 H1084"); offset-distance: 100%; opacity: 0; }
+.flow.portrait .packet { offset-path: path("M180 470 V564 H256 V690 L170 760 V860 H230 V760 L300 715 H330 V1040 H180 V1196 H250"); }
 
 /* The refused commit: the same drawing, stopped at the gate. */
 .flow.refused .lamp-go { fill: none; stroke: #9a9ba0; }
@@ -124,6 +125,7 @@ figure { margin: 0; }
   .flow.live .packet { animation: travel 3.4s cubic-bezier(.33, 0, .2, 1) .5s both; }
   .flow.live .lamp-go { animation: lamp .6s ease-out 2.3s both; }
   .flow.refused.live .packet { offset-path: path("M224 158 H724 L850 138 V182 H700"); animation-name: travel-stop; }
+  .flow.portrait.refused.live .packet { offset-path: path("M180 470 V564 H256 V690 L170 760 V860 H230 V760"); }
   .flow.refused.live .lamp-stop { animation: lamp .6s ease-out 2.6s both; }
   .flow.refused.live .return { animation: appear .8s ease-out 2.8s both; }
 }
@@ -186,11 +188,8 @@ footer a { color: var(--ink-2); }
   .top .edition { display: none; }
   .top nav { gap: 16px; }
   .top nav .opt { display: none; }
-  .fig { overflow-x: auto; scroll-snap-type: x proximity; }
-  .fig svg { scroll-snap-align: start; }
-  .scroll-cue { display: block; position: sticky; left: 0; margin: 0 0 6px; padding: 0 2px; font: 500 12px/1 var(--mono); letter-spacing: .06em; color: var(--mid); }
-  .fig svg { min-width: 860px; }
-  .fig figcaption { position: sticky; left: 0; }
+  .fig .landscape { display: none; }
+  .fig .portrait { display: block; max-width: 440px; margin: 0 auto; }
   footer { padding-left: var(--gutter); }
   .ref, .ref tbody, .ref tr, .ref td { display: block; }
   .ref thead { display: none; }

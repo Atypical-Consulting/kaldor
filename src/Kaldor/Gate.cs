@@ -168,9 +168,8 @@ static partial class Gate
         }.ToJsonString();
     }
 
-    /// <summary>The staged change under <c>.kaldor/</c>, in full (the reviewer's safe flags, nothing cut).</summary>
-    static string OwnFilesDiff(Repo repo) =>
-        Proc.GitSafe(repo.Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--", ":(top).kaldor/");
+    /// <summary>The staged change under <c>.kaldor/</c>, in full (the reviewer's safe flags, a hidden text file shown as text).</summary>
+    static string OwnFilesDiff(Repo repo) => repo.StagedDiff(":(top).kaldor/");
 
     /// <summary>What a ticket for <paramref name="command"/> vouches for, and the text the prompt shows; null when there is nothing to vouch for.</summary>
     static (string Subject, string Shown)? Vouched(Repo repo, string command)

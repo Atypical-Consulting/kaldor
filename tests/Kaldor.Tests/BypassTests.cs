@@ -703,6 +703,40 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
+    public void The_approve_prompt_shows_a_kaldor_file_that_an_attribute_hides()
+    {
+        Attributes(".kaldor/** binary\n");
+        FreezeIntent();
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        var reason = Asked(AskHook("kaldor approve")).Reason;
+        Assert.Contains("\"block_on\": []", reason);
+        Assert.DoesNotContain("Binary files", reason);
+    }
+
+    [Fact]
+    public void A_kaldor_file_with_a_NUL_byte_stays_binary_in_the_approve_prompt()
+    {
+        Attributes(".kaldor/** binary\n");
+        FreezeIntent();
+        File.WriteAllBytes(Path.Combine(_root, ".kaldor", "blob.bin"), [1, 0, 2]);
+        Proc.Git(_root, "add", "-f", ".kaldor/blob.bin");
+        Assert.Contains("Binary files", Asked(AskHook("kaldor approve")).Reason);
+    }
+
+    [Fact]
+    public void The_whole_staged_diff_is_unchanged_by_the_pathspec_option()
+    {
+        FreezeIntent();
+        Stage("one");
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        Assert.Equal(
+            Proc.GitSafe(_root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", "-U5", "--"),
+            _repo.StagedDiff());
+    }
+
+    [Fact]
     public void The_approve_prompt_has_no_kaldor_section_for_an_ordinary_file()
     {
         FreezeIntent();

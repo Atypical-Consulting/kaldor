@@ -762,6 +762,111 @@ public sealed class BypassTests : IDisposable
         Proc.Git(_root, "add", "a.txt");
     }
 
+    void UseRules(int max)
+    {
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { TrivialMaxLines = max }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        Proc.Git(_root, "commit", "-q", "--allow-empty", "-m", "rules");
+        UserCommitted();
+    }
+
+    string Lines(int n) => string.Concat(Enumerable.Range(0, n).Select(i => $"line {i}\n"));
+
+    [Fact]
+    public void Small_confirmed_change_skips_the_model_review()
+    {
+        UseRules(5);
+        FreezeIntent();
+        Stage("x\n");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(0, _reviews);
+        Assert.Equal(1, _repo.ReadLog().Single(e => e.Kind == "trivial").Lines);
+
+        var all = new StringWriter();
+        var old = Console.Out;
+        try { Console.SetOut(all); Commands.Report(_root, 10); } finally { Console.SetOut(old); }
+        Assert.Contains("trivial", all.ToString());
+        Assert.Contains("ACCEPTED", all.ToString());
+        Assert.Contains("1/5 of this task's trivial budget", all.ToString());
+    }
+
+    [Fact]
+    public void Without_trivial_max_lines_every_commit_is_reviewed()
+    {
+        FreezeIntent();
+        Stage("x\n");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+    }
+
+    [Fact]
+    public void Splitting_a_change_spends_one_budget_per_intent()
+    {
+        UseRules(5);
+        FreezeIntent();
+        Stage(Lines(3));
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(0, _reviews);
+        Stage(Lines(3) + "more\nmore\nmore\n"); // 3 more lines: 6 > 5, though small alone
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Stage(Lines(3) + "more\nmore\nmore\nagain\n"); // one line, but the budget is spent
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(2, _reviews);
+    }
+
+    [Fact]
+    public void Small_change_to_a_sensitive_path_is_reviewed()
+    {
+        UseRules(5);
+        FreezeIntent();
+        Directory.CreateDirectory(Path.Combine(_root, ".github"));
+        File.WriteAllText(Path.Combine(_root, ".github", "ci.yml"), "x\n");
+        Proc.Git(_root, "add", ".github/ci.yml");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+    }
+
+    [Fact]
+    public void Binary_and_mode_only_changes_are_reviewed()
+    {
+        UseRules(5);
+        FreezeIntent();
+        File.WriteAllBytes(Path.Combine(_root, "b.bin"), [1, 0, 2]);
+        Proc.Git(_root, "add", "b.bin");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Proc.Git(_root, "update-index", "--chmod=+x", "b.bin");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(2, _reviews);
+    }
+
+    [Fact]
+    public void An_unconfirmed_intent_never_takes_the_fast_path_even_with_confirm_after()
+    {
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { TrivialMaxLines = 5, Confirm = "after" }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        Proc.Git(_root, "commit", "-q", "--allow-empty", "-m", "rules");
+        UserCommitted();
+        FreezeIntent(confirm: false);
+        Stage("x\n");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Assert.DoesNotContain(_repo.ReadLog(), e => e.Kind == "trivial");
+    }
+
+    [Theory]
+    [InlineData("**/Auth/**", "src/Auth/x.cs", true)]
+    [InlineData("**/Auth/**", "Auth/x.cs", true)]
+    [InlineData("**/Auth/**", "src/Authz/x.cs", false)]
+    [InlineData(".github/**", ".github/ci.yml", true)]
+    [InlineData(".github/**", "a/.github/ci.yml", false)]
+    [InlineData("**/appsettings*.json", "src/appsettings.Prod.json", true)]
+    [InlineData("*.md", "docs/a.md", false)]
+    [InlineData("a?.txt", "ab.txt", true)]
+    public void Sensitive_globs(string glob, string path, bool expected) =>
+        Assert.Equal(expected, (Rules.Default with { Sensitive = [glob] }).IsSensitive(path));
+
     [Fact]
     public void Edit_without_frozen_intent_is_denied()
     {

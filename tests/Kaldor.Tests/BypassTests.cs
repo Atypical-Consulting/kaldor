@@ -22,7 +22,11 @@ public sealed class BypassTests : IDisposable
         _repo = Repo.Find(_root)!;
     }
 
-    public void Dispose() => TestRepo.Delete(_root);
+    public void Dispose()
+    {
+        foreach (var w in _worktrees) TestRepo.Delete(w);
+        TestRepo.Delete(_root);
+    }
 
     ReviewResult FakeReview(Rules rules, string intent, string diff)
     {
@@ -355,7 +359,7 @@ public sealed class BypassTests : IDisposable
         if (InPseudoTerminal("1", "intent", "confirm", "--all") is not { } refused) return;
         Assert.NotEqual(0, refused.Code);
         Assert.Contains("inside a Claude Code session", refused.Output);
-        Assert.Null(_repo.LoadState().Preconfirmed);
+        Assert.Empty(_repo.LoadPreconfirmed());
     }
 
     [Fact]
@@ -433,7 +437,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(0, Commit().Code);
         Assert.Equal(1, _reviews);
         Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
-        Assert.Empty(_repo.LoadState().Preconfirmed!);
+        Assert.Empty(_repo.LoadPreconfirmed());
 
         Proc.Git(_root, "commit", "-q", "-m", "task one");
         // AC4: the same text for a second task needs a new confirmation.
@@ -446,6 +450,83 @@ public sealed class BypassTests : IDisposable
         var (code, err) = Commit();
         Assert.Equal(2, code);
         Assert.Contains("The user has not confirmed the frozen intent yet", err);
+    }
+
+    string AddWorktree(string name)
+    {
+        var path = _root + "-" + name;
+        Proc.Git(_root, "worktree", "add", "-q", path, "-b", name);
+        _worktrees.Add(path);
+        return path;
+    }
+
+    readonly List<string> _worktrees = [];
+
+    string FreezeIn(string worktree, string text)
+    {
+        Directory.CreateDirectory(Path.Combine(worktree, ".kaldor"));
+        File.WriteAllText(Path.Combine(worktree, ".kaldor", "intent.md"), text);
+        Assert.Equal(0, Commands.Freeze(worktree));
+        return worktree;
+    }
+
+    static bool Confirmed(string worktree) => Repo.Find(worktree)!.LoadState() is { ConfirmedHash: not null } s && s.ConfirmedHash == s.IntentHash;
+
+    [Fact]
+    public void A_preconfirmation_from_the_main_checkout_confirms_a_freeze_in_a_new_linked_worktree_once()
+    {
+        Queue("a.md", Draft);
+        Assert.Equal(0, Commands.ConfirmDrafts(_repo, _ => true));
+        var one = AddWorktree("one");
+        var two = AddWorktree("two");
+        FreezeIn(one, Draft);
+        Assert.True(Confirmed(one));
+        FreezeIn(two, Draft);
+        Assert.False(Confirmed(two));
+    }
+
+    [Fact]
+    public void Re_freezing_already_confirmed_text_does_not_spend_another_worktrees_acceptance()
+    {
+        Queue("a.md", Draft);
+        Commands.ConfirmDrafts(_repo, _ => true);
+        var one = AddWorktree("one");
+        FreezeIn(one, Draft);
+        Commands.ConfirmDrafts(_repo, _ => true); // accepted again for the next worker
+        FreezeIn(one, Draft); // one already has it confirmed
+        Assert.Equal([Repo.Hash(Draft)], _repo.LoadPreconfirmed());
+    }
+
+    [Fact]
+    public void Two_worktrees_racing_on_one_acceptance_get_it_once()
+    {
+        var hash = Repo.Hash(Draft);
+        _repo.SavePreconfirmed([hash]);
+        var repos = new[] { _repo, Repo.Find(AddWorktree("one"))!, Repo.Find(AddWorktree("two"))! };
+        var wins = 0;
+        Parallel.For(0, 8, i => { if (repos[i % 3].TakePreconfirmed(hash)) Interlocked.Increment(ref wins); });
+        Assert.Equal(1, wins);
+        Assert.Empty(_repo.LoadPreconfirmed());
+    }
+
+    [Fact]
+    public void A_malformed_shared_file_is_empty_and_taking_from_it_leaves_it_alone()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(_repo.PreconfirmedPath)!);
+        File.WriteAllText(_repo.PreconfirmedPath, "{nope");
+        Assert.Empty(_repo.LoadPreconfirmed());
+        Assert.False(_repo.TakePreconfirmed("x"));
+        Assert.Equal("{nope", File.ReadAllText(_repo.PreconfirmedPath));
+    }
+
+    [Fact]
+    public void Agent_cannot_write_the_shared_preconfirmed_file_from_a_linked_worktree()
+    {
+        var one = AddWorktree("one");
+        var (code, err) = Hook("Write", new { file_path = _repo.PreconfirmedPath, content = "[]" }, one);
+        Assert.Equal(2, code);
+        Assert.Contains("written by the kaldor tool only", err);
+        Assert.Equal(2, Hook("Bash", new { command = $"echo '[]' > \"{_repo.PreconfirmedPath}\"" }, one).Code);
     }
 
     [Fact]
@@ -471,7 +552,7 @@ public sealed class BypassTests : IDisposable
 
         var asked = 0;
         Commands.ConfirmDrafts(_repo, _ => asked++ == 1); // accepts only b.md, and replaces the earlier set
-        Assert.Equal([Repo.Hash("# Intent\nGoal: other\n")], _repo.LoadState().Preconfirmed);
+        Assert.Equal([Repo.Hash("# Intent\nGoal: other\n")], _repo.LoadPreconfirmed());
         FreezeIntent(Draft, confirm: false);
         Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
     }
@@ -494,7 +575,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(1, code);
         Assert.Equal("", output);
         Assert.Contains("intent confirm --all", err);
-        Assert.Null(_repo.LoadState().Preconfirmed);
+        Assert.Empty(_repo.LoadPreconfirmed());
     }
 
     [Fact]

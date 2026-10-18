@@ -68,7 +68,7 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
 /// </summary>
 sealed record Pass(string DiffHash, string IntentHash, string By, string? PatchId = null, string? AmendPatchId = null);
 
-sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, List<string>? Preconfirmed = null, string? ReviewedTip = null)
+sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, string? ReviewedTip = null)
 {
     public static State Empty => new(null, []);
 }
@@ -345,6 +345,60 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
 
     /// <summary><c>&lt;git-common-dir&gt;/kaldor/</c>, shared by every worktree.</summary>
     string CommonStateDir { get; } = commonStateDir;
+
+    /// <summary>Hashes the user accepted with <c>intent confirm --all</c>, shared by every worktree of the repository.</summary>
+    public string PreconfirmedPath => Path.Combine(CommonStateDir, "preconfirmed.json");
+
+    public List<string> LoadPreconfirmed() => ReadShared(PreconfirmedPath);
+
+    public void SavePreconfirmed(IEnumerable<string> hashes) =>
+        UpdateShared(PreconfirmedPath, _ => hashes.Distinct().ToList());
+
+    /// <summary>Removes <paramref name="hash"/> from the shared set under an exclusive lock; true for exactly one caller.</summary>
+    public bool TakePreconfirmed(string hash)
+    {
+        var found = false;
+        UpdateShared(PreconfirmedPath, set => { found = set.Remove(hash); return set; });
+        return found;
+    }
+
+    static List<string> ReadShared(string path)
+    {
+        try { return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path), Json) ?? []; }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { return []; }
+    }
+
+    /// <summary>
+    /// Read-modify-write of a JSON list shared by all worktrees, holding an exclusive lock (<c>FileShare.None</c>) from read to write.
+    /// A malformed file counts as empty and is left alone when <paramref name="update"/> changes nothing.
+    /// </summary>
+    static void UpdateShared(string path, Func<List<string>, List<string>> update)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        if (new FileInfo(path).LinkTarget is not null)
+            throw new KaldorException($"{Path.GetFileName(path)} must not be a link.");
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        FileStream fs;
+        while (true)
+        {
+            try { fs = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); break; }
+            catch (IOException) when (DateTime.UtcNow < deadline) { Thread.Sleep(20); }
+            catch (IOException) { throw new KaldorException($"Could not lock .git/kaldor/{Path.GetFileName(path)}; try again."); }
+        }
+        using (fs)
+        {
+            List<string> current;
+            try { current = JsonSerializer.Deserialize<List<string>>(fs, Json) ?? []; }
+            catch (JsonException) { current = []; }
+            var before = JsonSerializer.Serialize(current, Json);
+            var after = JsonSerializer.Serialize(update(current), Json);
+            if (before == after && fs.Length > 0) return;
+            fs.SetLength(0);
+            fs.Position = 0;
+            using var w = new StreamWriter(fs, leaveOpen: true);
+            w.Write(after);
+        }
+    }
 
     static IEnumerable<(string Name, LogEntry Entry)> ReadLog(string dir) =>
         !Directory.Exists(dir) ? [] :

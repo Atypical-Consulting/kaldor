@@ -41,7 +41,8 @@ When the session covers several tasks and the user will not be around, draft one
 `dnx Atypical.Kaldor intent confirm --all` in a terminal outside Claude Code: they accept each draft one by one.
 When a task starts, copy its draft byte for byte to `.kaldor/intent.md` and run `kaldor intent freeze`: if the text
 is one they accepted, it is already confirmed and commits go straight to the review. Each acceptance is used once;
-an edited draft needs the normal `kaldor intent confirm`. You cannot run `--all` yourself.
+the acceptances are shared by every worktree of the repository (including ones created later, as in a fleet of
+workers), so the user runs `--all` once in the checkout holding the drafts. An edited draft needs the normal `kaldor intent confirm`. You cannot run `--all` yourself.
 
 ## Committing
 

@@ -108,17 +108,13 @@ static class Commands
 
     /// <summary>
     /// A hash the user accepted with <c>intent confirm --all</c> confirms the freeze of exactly that text, once.
-    /// Only the human-only command writes <c>Preconfirmed</c>; the agent can only offer text that was shown to the user.
+    /// Only the human-only command writes the shared set (<c>.git/kaldor/preconfirmed.json</c>); the agent can only offer text that was shown to the user.
     /// </summary>
     static bool UsePreconfirmation(Repo repo, State state, string hash, string intent)
     {
-        if (state.Preconfirmed?.Contains(hash) != true) return false;
-        if (state.ConfirmedHash == hash) // already confirmed: nothing to confirm, but the acceptance is spent
-        {
-            repo.SaveState(state with { Preconfirmed = state.Preconfirmed.Where(h => h != hash).ToList() });
-            return false;
-        }
-        repo.SaveState(state with { ConfirmedHash = hash, Preconfirmed = state.Preconfirmed.Where(h => h != hash).ToList() });
+        if (state.ConfirmedHash == hash) return false; // nothing to confirm: leave the acceptance for another worktree
+        if (!repo.TakePreconfirmed(hash)) return false;
+        repo.SaveState(state with { ConfirmedHash = hash });
         repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent, Summary: "Confirmed up front with intent confirm --all"));
         Console.WriteLine("Intent frozen and already confirmed by the user.");
         return true;
@@ -207,7 +203,7 @@ static class Commands
         drafts = drafts.Where(f => new FileInfo(f).LinkTarget is null).ToList(); // a link could point at a FIFO or at state
         if (drafts.Count == 0)
         {
-            repo.SaveState(repo.LoadState() with { Preconfirmed = [] });
+            repo.SavePreconfirmed([]);
             Console.Error.WriteLine("No draft intents in .kaldor/queue/.");
             return 1;
         }
@@ -223,7 +219,7 @@ static class Commands
                 Summary: $"Pre-confirmed by {Environment.UserName} ({Path.GetFileName(file)})"));
         }
         // A new run replaces the set.
-        repo.SaveState(repo.LoadState() with { Preconfirmed = accepted.Distinct().ToList() });
+        repo.SavePreconfirmed(accepted);
         Console.WriteLine($"{accepted.Count} of {drafts.Count} intent(s) pre-confirmed. Each is used once, when a task freezes exactly that text.");
         return 0;
     }

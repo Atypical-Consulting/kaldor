@@ -112,7 +112,7 @@ Creates `.kaldor/rules.json` with default rules (versioned), a `.kaldor/.gitigno
 
 1. You ask Claude for a feature.
 2. Before its first change, the intent guard blocks it until an intent is frozen. Claude writes `.kaldor/intent.md` and shows it to you.
-3. You approve or correct the intent in one sentence. Claude freezes it with `kaldor intent freeze`.
+3. You approve or correct the intent in one sentence. Claude freezes it with `kaldor intent freeze`, and you confirm it with `kaldor intent confirm` in your terminal; commits wait for that confirmation.
 4. Claude codes, then runs `git commit`.
 5. The hook computes the hashes and launches the reviewer. During the review, Claude Code shows a waiting message.
 6. **No deviation**: the commit goes through, and the report is added to the history.
@@ -131,6 +131,7 @@ Nine commands cover v1; day to day, you only type `kaldor report`, and `kaldor a
 | --- | --- | --- |
 | `kaldor init` | You, once | Creates `.kaldor/`, the default rules and the `.gitignore` entry |
 | `kaldor intent freeze` | The agent | Freezes the current intent and records its hash |
+| `kaldor intent confirm` | You only | Confirms the frozen intent; until then the agent's commits are refused |
 | `kaldor intent amend` | The agent proposes, you accept | Adds a dated amendment; it only takes effect after your `--accept` |
 | `kaldor gate` | The hook | Hook entry point: detects the commit, computes the hashes, launches the reviewer, returns the verdict |
 | `kaldor check` | The git `pre-commit` hook | Same check on the index being committed, for agent commits the gate could not see |
@@ -302,7 +303,7 @@ What v1 does differently from the plan above, and why:
 - **No reviewer agent file**: the reviewer is `claude -p --safe-mode --tools "" --no-session-persistence` with the system prompt and a JSON schema passed on the command line. `--safe-mode` disables CLAUDE.md, plugins and hooks while keeping the user's authentication, so the reviewer reads nothing the agent could have written, and cannot recurse into Kaldor. It has no tools: the diff is sent with five lines of context.
 - **A git `pre-commit` backstop**: the command parser covers `git -C`, `cd x &&`, wrappers, subshells, `bash -c` and aliases, but cannot see inside a script. `kaldor init` installs a `pre-commit` hook that runs the same check whenever `CLAUDECODE=1`, so a commit from a script is reviewed too. Human commits are not affected.
 - **Blocked verdicts are reused**: the same diff against the same intent gets the same answer without a second model call. Passing verdicts are kept in `state.json` so the backstop does not review twice.
-- **Starting a new intent**: `kaldor intent freeze` replaces a frozen intent only when the work tree is clean. Mid-task, the intent can change only through an amendment the human accepts. Known limit: an agent that stashes its work could freeze a new intent; the freeze is logged and shows in `kaldor report`.
+- **Starting a new intent**: `kaldor intent freeze` replaces a frozen intent only when the work tree is clean. Mid-task, the intent can change only through an amendment the human accepts. An agent that stashes its work can freeze a new intent, but its commits then wait for the human's `kaldor intent confirm`.
 - **Cost of the gate**: every Bash and edit tool call starts the tool through dnx, about 0.5 s. Narrowing the hook with `if` would reopen the bypasses it exists to close.
 
 ## Sources

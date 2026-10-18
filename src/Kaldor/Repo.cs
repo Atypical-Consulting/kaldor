@@ -61,7 +61,7 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
 
 sealed record Pass(string DiffHash, string IntentHash, string By);
 
-sealed record State(string? IntentHash, List<Pass> Passes)
+sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null)
 {
     public static State Empty => new(null, []);
 }

@@ -1075,6 +1075,31 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(1, _reviews);
     }
 
+    [Theory]
+    [InlineData(".githooks/pre-push", true)]
+    [InlineData(".husky/_/husky.sh", true)]
+    [InlineData(".husky/pre-commit", true)]
+    [InlineData("src/hooks.cs", false)]
+    [InlineData("docs/githooks.md", false)]
+    public void Hook_directories_are_sensitive_by_default(string path, bool sensitive) =>
+        Assert.Equal(sensitive, Rules.Default.IsSensitive(path));
+
+    [Theory]
+    [InlineData(".githooks/pre-push", 1)]
+    [InlineData(".husky/pre-commit", 1)]
+    [InlineData("a.txt", 0)]
+    public void A_small_change_to_a_hook_is_still_reviewed(string path, int reviews)
+    {
+        UseRules(5);
+        FreezeIntent();
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(_root, path))!);
+        File.WriteAllText(Path.Combine(_root, path), "x\n");
+        Proc.Git(_root, "add", path);
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(reviews, _reviews);
+        Assert.Equal(reviews == 0, _repo.ReadLog().Any(e => e.Kind == "trivial"));
+    }
+
     [Fact]
     public void Splitting_a_change_spends_one_budget_per_intent()
     {

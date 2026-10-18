@@ -321,6 +321,83 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(["scope_creep"], _seen!.BlockOn);
     }
 
+    static readonly Dictionary<string, string> NoClaude = new() { ["CLAUDECODE"] = "" };
+
+    /// <summary>Runs the real CLI in a pseudo-terminal (util-linux <c>script</c>) answering "y"; null where that is not available.</summary>
+    (int Code, string Output)? InPseudoTerminal(string claudeCode, params string[] args)
+    {
+        if (!OperatingSystem.IsLinux() || !File.Exists("/usr/bin/script")) return null;
+        var cli = $"dotnet {typeof(Commands).Assembly.Location} {string.Join(' ', args)}";
+        var (code, output, err) = Proc.Run("script", ["-qec", cli, "/dev/null"], _root, stdin: "y\n",
+            env: new Dictionary<string, string> { ["CLAUDECODE"] = claudeCode });
+        return (code, output + err);
+    }
+
+    [Fact]
+    public void Agent_cannot_confirm_through_a_pseudo_terminal()
+    {
+        FreezeIntent(confirm: false);
+        if (InPseudoTerminal("1", "intent", "confirm") is not { } refused) return;
+        Assert.NotEqual(0, refused.Code);
+        Assert.Contains("inside a Claude Code session", refused.Output);
+        Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+
+        // The same route confirms outside Claude Code, so the refusal above is the variable and nothing else.
+        var allowed = InPseudoTerminal("", "intent", "confirm")!.Value;
+        Assert.Equal(0, allowed.Code);
+        Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+    }
+
+    [Fact]
+    public void Agent_cannot_confirm_all_through_a_pseudo_terminal()
+    {
+        Queue("a.md", Draft);
+        if (InPseudoTerminal("1", "intent", "confirm", "--all") is not { } refused) return;
+        Assert.NotEqual(0, refused.Code);
+        Assert.Contains("inside a Claude Code session", refused.Output);
+        Assert.Null(_repo.LoadState().Preconfirmed);
+    }
+
+    [Fact]
+    public void Agent_cannot_approve_or_accept_through_a_pseudo_terminal()
+    {
+        FreezeIntent();
+        Stage();
+        if (InPseudoTerminal("1", "approve") is not { } refused) return;
+        Assert.NotEqual(0, refused.Code);
+        Assert.Contains("inside a Claude Code session", refused.Output);
+        Assert.DoesNotContain(_repo.LoadState().Passes, p => p.By == "approve");
+
+        var before = File.ReadAllText(_repo.IntentPath);
+        Assert.Equal(0, Commands.ProposeAmendment(_root, "Also add a cache."));
+        var accept = InPseudoTerminal("1", "intent", "amend", "--accept")!.Value;
+        Assert.NotEqual(0, accept.Code);
+        Assert.Contains("inside a Claude Code session", accept.Output);
+        Assert.Equal(before, File.ReadAllText(_repo.IntentPath));
+        Assert.Equal(0, InPseudoTerminal("", "intent", "amend", "--accept")!.Value.Code);
+    }
+
+    [Theory]
+    [InlineData("unset CLAUDECODE; bash x.sh")]
+    [InlineData("env -u CLAUDECODE bash x.sh")]
+    [InlineData("env -i bash x.sh")]
+    [InlineData("CLAUDECODE= bash x.sh")]
+    [InlineData("bash -c 'unset CLAUDECODE'")]
+    [InlineData("exec -c bash x.sh")]
+    [InlineData("systemd-run --user bash x.sh")]
+    public void The_gate_refuses_commands_that_clear_CLAUDECODE(string command)
+    {
+        var (code, err) = Commit(command);
+        Assert.Equal(2, code);
+        Assert.Contains("Clearing CLAUDECODE", err);
+    }
+
+    [Theory]
+    [InlineData("echo \"unset CLAUDECODE\"")]
+    [InlineData("CLAUDECODE=1 git status")]
+    public void The_gate_allows_mentioning_or_keeping_CLAUDECODE(string command) =>
+        Assert.Equal(0, Commit(command).Code);
+
     [Fact]
     public void Agent_cannot_confirm_the_intent()
     {
@@ -329,7 +406,7 @@ public sealed class BypassTests : IDisposable
 
         // The command itself needs a person at an interactive terminal.
         FreezeIntent(confirm: false);
-        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n");
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm"], _root, stdin: "y\n", env: NoClaude);
         Assert.Equal(1, code);
         Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
         // It refuses before showing anything, and says what to run instead.
@@ -413,7 +490,7 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(2, Commit("ls && kaldor intent confirm --all").Code);
 
         Queue("a.md", Draft);
-        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm", "--all"], _root, stdin: "y\n");
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "intent", "confirm", "--all"], _root, stdin: "y\n", env: NoClaude);
         Assert.Equal(1, code);
         Assert.Equal("", output);
         Assert.Contains("intent confirm --all", err);
@@ -481,7 +558,7 @@ public sealed class BypassTests : IDisposable
     {
         FreezeIntent();
         Stage();
-        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "approve"], _root, stdin: "y\n");
+        var (code, output, err) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "approve"], _root, stdin: "y\n", env: NoClaude);
         Assert.Equal(1, code);
         Assert.Equal("", output);
         Assert.Contains("`dnx Atypical.Kaldor approve` in a terminal outside Claude Code", err);

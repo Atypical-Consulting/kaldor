@@ -20,11 +20,15 @@ static class Commands
         $"`dnx Atypical.Kaldor {command}` in a terminal outside Claude Code";
 
     /// <summary>
-    /// The second lock on human-only commands: a non-interactive caller such as the agent cannot answer.
-    /// Checked before the command prints anything.
+    /// The second lock on human-only commands, checked before the command prints anything: it refuses inside a Claude Code
+    /// session (a pseudo-terminal there is still the agent's) and without an interactive terminal.
     /// </summary>
     static void RequireTerminal(string command)
     {
+        if (Environment.GetEnvironmentVariable("CLAUDECODE") == "1")
+            throw new KaldorException(
+                "This command runs inside a Claude Code session, where Claude could answer it. " +
+                $"Run {ForUser(command)}.");
         if (Console.IsInputRedirected)
             throw new KaldorException(
                 $"This command needs a person at an interactive terminal. Run {ForUser(command)} " +

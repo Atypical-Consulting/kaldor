@@ -400,7 +400,7 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
-    public void Without_rules_json_at_HEAD_the_gate_uses_the_work_tree_rules()
+    public void Without_rules_json_at_HEAD_a_guarded_repository_uses_the_default_rules()
     {
         Proc.Git(_root, "rm", "-q", "--cached", ".kaldor/rules.json");
         Proc.Git(_root, "commit", "-q", "-m", "no rules");
@@ -409,7 +409,7 @@ public sealed class BypassTests : IDisposable
         FreezeIntent();
         Stage();
         Assert.Equal(0, Commit().Code);
-        Assert.Equal(["scope_creep"], _seen!.BlockOn);
+        Assert.Equal(Rules.Default.BlockOn, _seen!.BlockOn);
     }
 
     static readonly Dictionary<string, string> NoClaude = new() { ["CLAUDECODE"] = "" };
@@ -921,6 +921,7 @@ public sealed class BypassTests : IDisposable
     {
         Proc.Git(_root, "rm", "-q", ".kaldor/rules.json");
         Proc.Git(_root, "commit", "-q", "-m", "drop kaldor");
+        File.Delete(_repo.GuardedPath); // as the user would
         Stage();
         Assert.Equal(0, Commit().Code);
         Assert.Equal(0, Hook("Write", new { file_path = Path.Combine(_root, "b.txt") }).Code);
@@ -932,6 +933,65 @@ public sealed class BypassTests : IDisposable
         Stage();
         var input = JsonSerializer.Serialize(new { cwd = _root, tool_name = "Bash", tool_input = new { command = "git commit" } });
         Assert.Equal(0, Gate.Run(input, TextWriter.Null, FakeReview, new Dictionary<string, string?> { ["KALDOR_REVIEWING"] = "1" }));
+    }
+
+    // ---- leaving the branch that has the rules (#47) ----
+
+    (int Code, string Err) WriteA() => Hook("Write", new { file_path = Path.Combine(_root, "a.txt"), content = "x" });
+
+    [Fact]
+    public void Switching_to_an_orphan_branch_keeps_Kaldor_on()
+    {
+        G("switch", "--orphan", "x");
+        var (code, err) = WriteA();
+        Assert.Equal(2, code);
+        Assert.Contains("No frozen intent", err);
+    }
+
+    [Fact]
+    public void Checking_out_a_commit_before_init_keeps_Kaldor_on()
+    {
+        var before = Proc.Git(_root, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "pre").Trim();
+        G("checkout", "-q", "--detach", before);
+        var (code, err) = WriteA();
+        Assert.Equal(2, code);
+        Assert.Contains("No frozen intent", err);
+    }
+
+    [Fact]
+    public void Work_tree_rules_on_a_branch_without_them_are_ignored()
+    {
+        G("checkout", "-q", "--orphan", "x");
+        G("rm", "-r", "--cached", "-q", ".kaldor");
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        FreezeIntent();
+        Stage();
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(Rules.Default.BlockOn, _seen!.BlockOn);
+    }
+
+    [Fact]
+    public void A_branch_tip_with_rules_guards_the_repository()
+    {
+        TestRepo.Delete(Path.Combine(_root, ".git", "kaldor")); // a fresh clone has no marker yet
+        G("switch", "--orphan", "x");
+        Assert.False(File.Exists(_repo.GuardedPath));
+        var (code, err) = WriteA();
+        Assert.Equal(2, code);
+        Assert.Contains("No frozen intent", err);
+        Assert.True(File.Exists(_repo.GuardedPath));
+    }
+
+    [Fact]
+    public void Doctor_reports_a_guarded_repository()
+    {
+        string Doctor() => Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "doctor"], _root).Out;
+        var output = Doctor();
+        Assert.Contains("ok    this repository is guarded on every branch", output);
+        Assert.DoesNotContain("HEAD has no", output);
+
+        G("switch", "--orphan", "x");
+        Assert.Contains("warn  HEAD has no .kaldor/rules.json; the default rules apply", Doctor());
     }
 
     // ---- commits that skipped `git commit` (#45) ----

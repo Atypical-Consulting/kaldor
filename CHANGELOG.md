@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.5.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.4.0...v1.5.0) (2026-10-18)
+
+
+### Added
+
+* confirm "after" in rules.json lets unattended commits go to review ([#42](https://github.com/Atypical-Consulting/kaldor/issues/42)) ([126537a](https://github.com/Atypical-Consulting/kaldor/commit/126537aabff34cff20ad442b04a0ea514da3ead2))
+* confirm several intents up front ([#40](https://github.com/Atypical-Consulting/kaldor/issues/40)) ([#49](https://github.com/Atypical-Consulting/kaldor/issues/49)) ([dc5704c](https://github.com/Atypical-Consulting/kaldor/commit/dc5704cb091d485c303478371a2472b540a487bb))
+* one confirm --all serves every worktree of the repository ([#51](https://github.com/Atypical-Consulting/kaldor/issues/51)) ([#55](https://github.com/Atypical-Consulting/kaldor/issues/55)) ([e34a0cb](https://github.com/Atypical-Consulting/kaldor/commit/e34a0cb54af9496b5aa3ab4acce2fcfa5fc9d833))
+
+
+### Fixed
+
+* **gate:** keep Kaldor on when the agent leaves the branch with the rules ([#57](https://github.com/Atypical-Consulting/kaldor/issues/57)) ([442a12e](https://github.com/Atypical-Consulting/kaldor/commit/442a12e322af3acd496f2a67eff2047913b565d9))
+* **gate:** read Kaldor's rules from HEAD; a .kaldor/ change needs approve ([#46](https://github.com/Atypical-Consulting/kaldor/issues/46)) ([ab55af3](https://github.com/Atypical-Consulting/kaldor/commit/ab55af357416c5c239b3bb1641f1445577ddc270))
+* **gate:** refuse commits that skipped git commit ([#45](https://github.com/Atypical-Consulting/kaldor/issues/45)) ([#52](https://github.com/Atypical-Consulting/kaldor/issues/52)) ([66aa0fe](https://github.com/Atypical-Consulting/kaldor/commit/66aa0fe34dce3ad2d09cba6f7cbd9d12342a0e0f))
+* **intent:** refuse human-only commands inside a Claude Code session ([#54](https://github.com/Atypical-Consulting/kaldor/issues/54)) ([76f468f](https://github.com/Atypical-Consulting/kaldor/commit/76f468fcf7b898b473d936c71b334bd0c43172ef))
+* share the reviewed set across worktrees and check every branch on push ([#53](https://github.com/Atypical-Consulting/kaldor/issues/53)) ([#56](https://github.com/Atypical-Consulting/kaldor/issues/56)) ([9ba7de4](https://github.com/Atypical-Consulting/kaldor/commit/9ba7de4da1d09d95f781916f37540e8b5199fda4))
+
 ## [1.4.0](https://github.com/Atypical-Consulting/kaldor/compare/v1.3.0...v1.4.0) (2026-10-18)
 
 

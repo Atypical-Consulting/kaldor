@@ -285,6 +285,20 @@ static class Commands
         var plugins = claude is null ? null : Try("claude", "plugin", "list");
         Line(plugins?.Contains("kaldor") == true, "Kaldor plugin installed in Claude Code",
             "In Claude Code: /plugin install kaldor --marketplace Atypical-Consulting/kaldor");
+        // A warning only: being offline or one release behind must not fail the doctor.
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            var index = http.GetStringAsync("https://api.nuget.org/v3-flatcontainer/atypical.kaldor/index.json").Result;
+            Console.WriteLine(NewerPublished(Version, index) is { } latest
+                ? $"warn  Kaldor {Version} is running; {latest} is published\n      In Claude Code: /plugin marketplace update kaldor, then /reload-plugins"
+                : $"ok    Kaldor {Version} is the latest published version");
+        }
+        catch (Exception ex) when (ex is AggregateException or HttpRequestException or TaskCanceledException or JsonException
+                                       or KeyNotFoundException or InvalidOperationException)
+        {
+            Console.WriteLine("warn  Could not check nuget.org for a newer Kaldor");
+        }
 
         var repo = Repo.Find(cwd);
         if (repo is null)
@@ -302,6 +316,18 @@ static class Commands
         Line(File.Exists(hook) && File.ReadAllText(hook).Contains("Atypical.Kaldor"), "git pre-commit hook installed", "Run `kaldor init`.");
         Console.WriteLine($"      intent: {(repo.LoadState().IntentHash is null ? "none frozen" : "frozen")}");
         return ok ? 0 : 1;
+    }
+
+    /// <summary>The newest stable version in a NuGet flat-container index, when it is newer than <paramref name="running"/>.</summary>
+    internal static string? NewerPublished(string running, string indexJson)
+    {
+        var versions = JsonDocument.Parse(indexJson).RootElement.GetProperty("versions").EnumerateArray()
+            .Select(v => System.Version.TryParse(v.GetString(), out var parsed) ? parsed : null) // pre-releases do not parse
+            .OfType<System.Version>();
+        var latest = versions.DefaultIfEmpty().Max();
+        return latest is not null && System.Version.TryParse(running, out var current) && latest > current
+            ? latest.ToString()
+            : null;
     }
 
     static string? Try(string file, params string[] args)

@@ -12,7 +12,9 @@ static partial class Gate
         "No frozen intent for this task. Write .kaldor/intent.md (goal, expected behavior, must not touch, expected " +
         "files), show it to the user and get their agreement, then run `kaldor intent freeze`.";
 
-    public static int Run(string input, TextWriter err, Reviewer review, IReadOnlyDictionary<string, string?>? env = null)
+    /// <param name="output">Where an <c>ask</c> decision goes (stdout); without it the gate never asks, it refuses.</param>
+    public static int Run(string input, TextWriter err, Reviewer review, IReadOnlyDictionary<string, string?>? env = null,
+        TextWriter? output = null)
     {
         string? Env(string name) => env is null ? Environment.GetEnvironmentVariable(name) : env.GetValueOrDefault(name);
         if (Env("KALDOR_REVIEWING") == "1") return 0;
@@ -20,7 +22,14 @@ static partial class Gate
         var hook = JsonNode.Parse(input) ?? throw new KaldorException("Empty hook input.");
         var cwd = hook["cwd"]?.GetValue<string>() ?? Environment.CurrentDirectory;
         var toolInput = hook["tool_input"];
-        var reason = hook["tool_name"]?.GetValue<string>() switch
+        var tool = hook["tool_name"]?.GetValue<string>();
+        if (tool is "Bash" or "PowerShell" && output is not null &&
+            Ask(hook, cwd, toolInput?["command"]?.GetValue<string>() ?? "", tool == "PowerShell") is { } ask)
+        {
+            output.WriteLine(ask);
+            return 0;
+        }
+        var reason = tool switch
         {
             "Edit" or "Write" or "MultiEdit" or "NotebookEdit" =>
                 GuardEdit(cwd, toolInput?["file_path"]?.GetValue<string>() ?? toolInput?["notebook_path"]?.GetValue<string>()),
@@ -92,8 +101,11 @@ static partial class Gate
         _ = Repo.Find(cwd);
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
-            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
-                   $"Ask them to run it themselves as {Commands.ForUser("<command>")}.";
+            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user, " +
+                   "and `kaldor gate` runs only as Claude Code's own hook. " +
+                   $"Ask them to run it themselves as {Commands.ForUser("<command>")}. Run alone and exactly as `kaldor <command>`, " +
+                   "in a permission mode that asks, it shows the user a permission prompt instead, as long as there is something " +
+                   "to vouch for: a frozen and unchanged, unconfirmed intent, a staged diff or unreviewed commits, a proposed amendment.";
         if (found.ClearsClaudeCode)
             return "Clearing CLAUDECODE is not allowed in a Kaldor repository: Kaldor uses it to tell Claude's commands from yours.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
@@ -119,6 +131,85 @@ static partial class Gate
             if (CheckHistory(repo, Repo.PushRoots) is { } reason) return reason;
         }
         return null;
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(?:kaldor|dnx (?:--yes )?Atypical\.Kaldor) (intent confirm|approve|intent amend --accept)\z")]
+    private static partial System.Text.RegularExpressions.Regex HumanCommand();
+
+    /// <summary>
+    /// The prompt route for a human-only command: when the whole command is exactly one of them and Claude Code will show
+    /// the user a permission prompt, the hook JSON of an <c>ask</c> decision that shows what the user vouches for and hands
+    /// the command a one-time ticket. Null in every other case, which the gate then refuses as before.
+    /// </summary>
+    static string? Ask(JsonNode hook, string cwd, string command, bool powerShell)
+    {
+        // bypassPermissions and dontAsk would not reach a person; an unknown or missing mode might not either.
+        if (hook["permission_mode"] is not JsonValue mode || !mode.TryGetValue<string>(out var m) || m is not ("default" or "acceptEdits" or "plan"))
+            return null;
+        command = command.Trim();
+        if (HumanCommand().Match(command) is not { Success: true } match) return null;
+        if (Repo.Find(cwd) is not { Enabled: true } repo) return null;
+        var name = match.Groups[1].Value;
+        if (Vouched(repo, name) is not var (subject, shown)) return null;
+
+        var ticket = Commands.IssueTicket(repo, name, subject);
+        // The whole tool input, so its other fields (timeout, description...) survive whether Claude Code merges or replaces it.
+        var updated = hook["tool_input"]!.DeepClone();
+        updated["command"] = powerShell ? $"$env:KALDOR_TICKET='{ticket}'; {command}" : $"KALDOR_TICKET={ticket} {command}";
+        return new JsonObject
+        {
+            ["hookSpecificOutput"] = new JsonObject
+            {
+                ["hookEventName"] = "PreToolUse",
+                ["permissionDecision"] = "ask",
+                ["permissionDecisionReason"] = shown,
+                ["updatedInput"] = updated,
+            },
+        }.ToJsonString();
+    }
+
+    /// <summary>The staged change under <c>.kaldor/</c>, in full (the reviewer's safe flags, nothing cut).</summary>
+    static string OwnFilesDiff(Repo repo) =>
+        Proc.GitSafe(repo.Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "--", ":(top).kaldor/");
+
+    /// <summary>What a ticket for <paramref name="command"/> vouches for, and the text the prompt shows; null when there is nothing to vouch for.</summary>
+    static (string Subject, string Shown)? Vouched(Repo repo, string command)
+    {
+        switch (command)
+        {
+            case "intent confirm":
+            {
+                var state = repo.LoadState();
+                var intent = repo.ReadIntent();
+                if (intent is null || state.IntentHash != Repo.Hash(intent) || state.ConfirmedHash == state.IntentHash) return null;
+                return (Repo.Hash(intent), "Kaldor: confirm this frozen intent? Claude's commits will be reviewed against it.\n\n" +
+                                           Commands.Printable(intent.Trim()));
+            }
+            case "intent amend --accept":
+            {
+                if (!File.Exists(repo.AmendmentPath)) return null;
+                var text = File.ReadAllText(repo.AmendmentPath).Trim();
+                return (Repo.Hash(text), "Kaldor: add this amendment to the frozen intent?\n\n" + Commands.Printable(text));
+            }
+            default: // approve
+            {
+                var unreviewed = repo.UnreviewedCommits(Repo.PushRoots);
+                if (unreviewed.Count > 0)
+                    return (Commands.CommitsSubject(unreviewed.Select(c => c.Sha)),
+                            "Kaldor: approve these commits without a review?\n\n" +
+                            string.Join('\n', unreviewed.Select(c => "  " + Commands.Printable(c.Subject))));
+                var intent = repo.ReadIntent();
+                var diff = repo.StagedDiff();
+                if (intent is null || diff.Length == 0) return null;
+                var diffHash = Repo.Hash(diff);
+                var stat = Proc.Git(repo.Root, "--no-replace-objects", "diff", "--cached", "--stat", "--no-color", "--no-ext-diff");
+                var deviations = repo.LatestReview(e => e.DiffHash == diffHash)?.Deviations ?? [];
+                return (Commands.DiffSubject(Repo.Hash(intent), diffHash),
+                        "Kaldor: force this staged diff through without a passing review?\n\n" + Commands.Printable(stat.TrimEnd()) +
+                        (deviations.Length == 0 ? "" : "\n\nLatest review:\n" + string.Join('\n', deviations.Select(d => "- " + Commands.Printable(d)))) +
+                        (repo.StagedKaldorChange() ? "\n\nChanges to Kaldor's own files:\n" + Commands.Printable(OwnFilesDiff(repo).TrimEnd()) : ""));
+            }
+        }
     }
 
     /// <summary>

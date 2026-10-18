@@ -56,10 +56,10 @@ Prefer typing `kaldor`? `dotnet tool install -g Atypical.Kaldor`. The examples b
 Work with Claude Code as usual. Kaldor steps in twice:
 
 - **Before the first edit** of a task, Claude writes `.kaldor/intent.md`, shows it to you, then freezes it with `kaldor intent freeze`. Edits are refused until then.
-- **Confirm the intent** with `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code, any time before Claude's first commit. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
+- **Confirm the intent** any time before Claude's first commit: Claude runs `kaldor intent confirm` and Claude Code asks you to allow it, showing the frozen intent; allowing it is your confirmation. Or run `dnx Atypical.Kaldor intent confirm` (or `kaldor intent confirm` with the global tool) in a terminal outside Claude Code. Claude froze it; only you can vouch for it, so commits wait for your confirmation.
 - **At each commit**, the reviewer runs (a few seconds). Accepted commits go through; rejected ones come back to Claude with the list of deviations.
 
-Your commands, from a terminal outside Claude Code (the `!` prefix has no terminal, and the confirmations below need one). Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`:
+Your commands, from a terminal outside Claude Code. Without the global tool, type `dnx Atypical.Kaldor` instead of `kaldor`. For `intent confirm`, `approve` and `intent amend --accept` you can also ask Claude to run it: Claude Code will ask you to allow it, showing the intent, the staged diff (changes under `.kaldor/` in full) or the amendment. The `!` prefix still cannot run them: it has no terminal and no prompt.
 
 | Command | What it does |
 | --- | --- |
@@ -71,7 +71,7 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |
 | `kaldor doctor` | Check the installation |
 
-`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they refuse to run inside a Claude Code session (`CLAUDECODE=1`) or without an interactive terminal.
+`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they refuse to run inside a Claude Code session (`CLAUDECODE=1`) or without an interactive terminal. The one way through is the permission prompt: when Claude runs one of them alone and exactly as written, in a permission mode that asks you (`default`, `acceptEdits`, `plan`), the hook asks you instead of refusing and hands the command a one-time ticket, valid 5 minutes, for that command and for what the prompt showed. In `bypassPermissions` or `dontAsk` mode, or in any other form, the refusal stays.
 
 ```text
 2026-10-17 23:30  review          BLOCKED
@@ -124,6 +124,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 - An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
 - Code the agent writes and runs (a script, `python -c`) can clear `CLAUDECODE` and run a human-only command in a pseudo-terminal, as it can write `.git/kaldor/state.json`: the gate only sees the command line (so does a command that starts a clean environment, such as `ssh`, `docker run`, `systemctl --user` or `sudo -u`). A terminal you start from inside a Claude Code session inherits the variable and is refused too.
+- The hook refuses `kaldor gate` as a Bash or PowerShell command, so the agent cannot feed it a forged hook input and read a permission-prompt ticket from its output. Code the agent writes and runs (a script, `python -c`), or a form the parser does not resolve (a launcher such as `timeout 5 kaldor gate` or `xargs kaldor gate`, `dotnet <path>/Kaldor.dll gate`, a shell function or alias, a variable such as `$K gate`, a renamed copy of the tool), can still call `kaldor gate` itself and get one: the gate only sees the command line.
 - An unreviewed commit is caught at the next commit or push through the Bash tool, not when it is made. A push from a script, a write to remote-tracking refs (`git update-ref refs/remotes/...`, or `git fetch . HEAD:refs/remotes/...`) are out of reach. Only the history that exists when Kaldor first runs on a repository (`kaldor init`, or its first hook call) is trusted; every worktree then checks its commits against one reviewed set in `.git/kaldor/reviewed.json`.
 - An interpreter can delete `.git/kaldor/guarded` (or `state.json`), like any write to `.git/kaldor/` that is not an edit tool or a recognised shell write (#9). Without the marker, a checkout without the rules is only guarded if some branch tip still has them.
 - A push checks every local branch and tag, whatever it sends: an old unreviewed commit on any branch blocks a push until you `kaldor approve` it (a push of a raw commit id is refused). Commits reviewed in one worktree are accepted in all of them. A rebase that changes a commit's context lines, or resolves a conflict, needs your `kaldor approve`.

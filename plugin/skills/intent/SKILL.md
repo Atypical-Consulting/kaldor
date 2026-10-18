@@ -28,9 +28,11 @@ conversation, so the intent must say everything the reviewer needs.
 
 3. Show the intent to the user and wait for their agreement or correction.
 4. Freeze it: `kaldor intent freeze`. From then on, edits are allowed.
-5. Ask the user to confirm it by running `dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code
-   (the `!` prefix has no terminal, and `kaldor` is on PATH only inside Claude Code). Commits are refused until
-   they do; you cannot run it yourself.
+5. Get the user's confirmation: run `kaldor intent confirm` yourself, alone and exactly as written. Claude Code then
+   shows the user a permission prompt with the frozen intent, and their "allow" is what confirms it. In a permission
+   mode that skips prompts (`bypassPermissions`, `dontAsk`) it is refused: ask the user to run
+   `dnx Atypical.Kaldor intent confirm` in a terminal outside Claude Code instead (the `!` prefix has no terminal).
+   Commits are refused until the intent is confirmed.
 6. Right away, run `kaldor intent wait` in the background and keep working on the edits meanwhile. It returns
    as soon as the user has confirmed; then commit. Do not ask the user to tell you when they are done. If it times
    out, run it again, or check in with the user.
@@ -65,9 +67,11 @@ If the work genuinely needs more than the intent allows, do not edit `.kaldor/in
 kaldor intent amend "Also add an index on orders.created_at: pagination is too slow without it."
 ```
 
-Then tell the user and ask them to run `dnx Atypical.Kaldor intent amend --accept` in a terminal outside Claude Code. Only they can
-accept it; until then, commits are reviewed against the original intent.
+Then tell the user and run `kaldor intent amend --accept`, alone, so Claude Code asks them to allow it (or they run
+`dnx Atypical.Kaldor intent amend --accept` in a terminal outside Claude Code). Only they can accept it; until then,
+commits are reviewed against the original intent.
 
-If the user disagrees with a rejection, they can force the commit with `dnx Atypical.Kaldor approve` in a terminal outside Claude Code.
-Never run `kaldor approve`, `kaldor intent confirm` or `kaldor intent amend --accept` yourself: all three are
-refused to you.
+If the user disagrees with a rejection, they can force the commit the same way: allow `kaldor approve` when you run it
+at their request, or run `dnx Atypical.Kaldor approve` in a terminal outside Claude Code.
+Run `kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` only alone and exactly as written, so
+the user gets the prompt: any other form (combined, piped, in a script, `intent confirm --all`) is refused to you.

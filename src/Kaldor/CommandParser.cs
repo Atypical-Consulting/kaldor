@@ -73,7 +73,9 @@ static class CommandParser
     }
 
     static bool IsHumanOnly(List<string> args) =>
-        args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..];
+        args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..]
+            // The hook entry point: run by the agent, it would hand out a permission-prompt ticket nobody was asked for (#63).
+            or ["gate", ..];
 
     /// <summary>Programs that run another command given as arguments (or, like <c>script -c</c>, as one string).</summary>
     static readonly HashSet<string> Launchers =

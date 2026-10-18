@@ -97,7 +97,13 @@ sealed record Rules(string[] Sensitive, string[] Trivial, string ReviewerModel, 
 /// </summary>
 sealed record Pass(string DiffHash, string IntentHash, string By, string? PatchId = null, string? AmendPatchId = null);
 
-sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, string? ReviewedTip = null)
+/// <summary>
+/// A one-time ticket the gate put in a Claude Code permission prompt: only its hash is kept, with the human-only command
+/// it stands for, what it vouches for (<see cref="Commands.IssueTicket"/>) and when it expires.
+/// </summary>
+sealed record Ticket(string Hash, string Command, string Subject, DateTimeOffset Expires);
+
+sealed record State(string? IntentHash, List<Pass> Passes, string? ConfirmedHash = null, string? ReviewedTip = null, Ticket? Pending = null)
 {
     public static State Empty => new(null, []);
 }

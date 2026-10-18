@@ -41,6 +41,8 @@ static class CommandParser
         /// <summary>True when the command also runs a git command that adds commits to HEAD (cherry-pick, rebase, ...).</summary>
         public bool AddsCommits;
         public bool HumanOnly;
+        /// <summary>True when the command clears or hides <c>CLAUDECODE</c>, which Kaldor uses to tell Claude's commands from the user's.</summary>
+        public bool ClearsClaudeCode;
         /// <summary>Full paths the command writes or deletes, as far as the parser can tell.</summary>
         public readonly List<string> Writes = [];
     }
@@ -71,6 +73,34 @@ static class CommandParser
     static bool IsHumanOnly(List<string> args) =>
         args is ["approve", ..] or ["intent", "amend", "--accept", ..] or ["intent", "confirm", ..];
 
+    static bool IsClaudeCodeAssignment(string word) =>
+        word.StartsWith("CLAUDECODE=", StringComparison.Ordinal) && word != "CLAUDECODE=1";
+
+    /// <summary><c>env -i / -u CLAUDECODE / --unset</c> and <c>exec -c</c>, reading the words after the one at <paramref name="at"/>.</summary>
+    static bool ClearsEnvironment(List<string> words, int at)
+    {
+        var flag = words[at] == "exec" ? 'c' : 'i';
+        for (var j = at + 1; j < words.Count && (words[j].StartsWith('-') || IsAssignment(words[j])); j++)
+        {
+            var w = words[j];
+            if (IsClaudeCodeAssignment(w) || w is "--ignore-environment" or "--unset=CLAUDECODE" or "-uCLAUDECODE") return true;
+            if (w is "-u" or "--unset" && words.ElementAtOrDefault(j + 1) == "CLAUDECODE") return true;
+            if (w.Length > 1 && w[0] == '-' && w[1] != '-' && w[1..].Contains(flag)) return true;
+        }
+        return false;
+    }
+
+    // ponytail: names only; code the agent writes can still clear the variable (README, Known limits).
+    // `at`, `batch`, `crontab` and `systemd-run` start the command from a manager that does not pass the environment on.
+    static bool ClearsClaudeCode(string name, List<string> args) => name switch
+    {
+        "unset" => args.Contains("CLAUDECODE"),
+        "export" or "declare" or "typeset" => args.Any(IsClaudeCodeAssignment) || (args.Contains("-n") && args.Contains("CLAUDECODE")),
+        "systemd-run" or "at" or "batch" => true,
+        "crontab" => !args.Contains("-l"),
+        _ => false,
+    };
+
     static void Scan(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>> aliases, Findings found, int depth)
     {
         if (depth > 5) return;
@@ -81,11 +111,16 @@ static class CommandParser
             var wrapped = false;
             while (i < segment.Count &&
                    (Prefixes.Contains(segment[i]) || IsAssignment(segment[i]) || (wrapped && segment[i].StartsWith('-'))))
+            {
+                if (IsClaudeCodeAssignment(segment[i]) || (segment[i] is "env" or "exec" && ClearsEnvironment(segment, i)))
+                    found.ClearsClaudeCode = true;
                 wrapped |= Prefixes.Contains(segment[i++]);
+            }
             if (i >= segment.Count) continue;
 
             var name = Path.GetFileName(segment[i]).ToLowerInvariant().Replace(".exe", "");
             var rest = segment.Skip(i + 1).ToList();
+            if (ClearsClaudeCode(name, rest)) found.ClearsClaudeCode = true;
 
             if (name is "cd" or "pushd" or "set-location" or "sl")
             {

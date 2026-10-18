@@ -72,6 +72,33 @@ public class CommandParserTests
         Assert.Equal(skips, Assert.Single(Find(command)).SkipsHooks);
 
     [Theory]
+    [InlineData("unset CLAUDECODE; bash x.sh", true)]
+    [InlineData("env -u CLAUDECODE bash x.sh", true)]
+    [InlineData("env -uCLAUDECODE bash x.sh", true)]
+    [InlineData("env --unset=CLAUDECODE bash x.sh", true)]
+    [InlineData("env --unset CLAUDECODE bash x.sh", true)]
+    [InlineData("env -i bash x.sh", true)]
+    [InlineData("sudo env --ignore-environment bash x.sh", true)]
+    [InlineData("env FOO=1 -i bash x.sh", true)]
+    [InlineData("CLAUDECODE= bash x.sh", true)]
+    [InlineData("CLAUDECODE=0 bash x.sh", true)]
+    [InlineData("env CLAUDECODE= bash x.sh", true)]
+    [InlineData("export -n CLAUDECODE", true)]
+    [InlineData("export CLAUDECODE=", true)]
+    [InlineData("exec -c bash x.sh", true)]
+    [InlineData("bash -c 'unset CLAUDECODE'", true)]
+    [InlineData("echo $(env -i bash x.sh)", true)]
+    [InlineData("systemd-run --user bash x.sh", true)]
+    [InlineData("echo 'a' | at now", true)]
+    [InlineData("echo \"unset CLAUDECODE\"", false)]
+    [InlineData("CLAUDECODE=1 git status", false)]
+    [InlineData("env FOO=1 ls", false)]
+    [InlineData("env -u OTHER ls", false)]
+    [InlineData("crontab -l", false)]
+    public void Spots_commands_that_clear_CLAUDECODE(string command, bool clears) =>
+        Assert.Equal(clears, CommandParser.Analyze(command, Cwd, NoAliases).ClearsClaudeCode);
+
+    [Theory]
     [InlineData("kaldor approve", true)]
     [InlineData("dnx --yes Atypical.Kaldor approve", true)]
     [InlineData("echo y | kaldor intent amend --accept", true)]

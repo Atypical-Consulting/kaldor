@@ -71,7 +71,7 @@ Your commands, from a terminal outside Claude Code (the `!` prefix has no termin
 | `kaldor review` | Dry-run review of the staged diff, nothing recorded |
 | `kaldor doctor` | Check the installation |
 
-`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they need an interactive terminal.
+`intent confirm`, `approve` and `amend --accept` are refused to the agent twice over: the hook denies them, and they refuse to run inside a Claude Code session (`CLAUDECODE=1`) or without an interactive terminal.
 
 ```text
 2026-10-17 23:30  review          BLOCKED
@@ -119,6 +119,7 @@ The target is a hurried agent taking a shortcut, not a hostile one. Each shortcu
 
 - An agent that stashes its work gets a clean tree back and can freeze a new intent, but its commits then wait for your `kaldor intent confirm`.
 - A write from inside a script or an interpreter (`python -c`) can still reach `.git/kaldor/state.json` and forge a pass: the gate only sees the command line.
+- Code the agent writes and runs (a script, `python -c`) can clear `CLAUDECODE` and run a human-only command in a pseudo-terminal, as it can write `.git/kaldor/state.json`: the gate only sees the command line. A terminal you start from inside a Claude Code session inherits the variable and is refused too.
 - An unreviewed commit is caught at the next commit or push through the Bash tool, not when it is made. A push from a script, a write to remote-tracking refs (`git update-ref refs/remotes/...`, or `git fetch . HEAD:refs/remotes/...`) and the first check in a new worktree (which trusts the history it finds) are out of reach.
 - Only `HEAD` is checked on a push: `git push origin other:main` is not. Reviews are recorded per worktree, so commits reviewed in one worktree and merged into another need your `kaldor approve` there. A rebase that changes a commit's context lines, or resolves a conflict, does too.
 - A staged diff over 600,000 characters is refused outright: split the commit.

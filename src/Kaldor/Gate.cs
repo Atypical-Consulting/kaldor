@@ -92,6 +92,8 @@ static partial class Gate
         if (found.HumanOnly)
             return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
                    $"Ask them to run it themselves as {Commands.ForUser("<command>")}.";
+        if (found.ClearsClaudeCode)
+            return "Clearing CLAUDECODE is not allowed in a Kaldor repository: Kaldor uses it to tell Claude's commands from yours.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 
         foreach (var commit in found.Commits)

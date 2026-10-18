@@ -40,6 +40,7 @@ try
         ["report"] => Commands.Report(cwd, 10),
         ["report", "--unconfirmed"] => Commands.Report(cwd, 10, unconfirmedOnly: true),
         ["report", var n, "--unconfirmed"] when int.TryParse(n, out var uc) => Commands.Report(cwd, uc, unconfirmedOnly: true),
+        ["report", "--unconfirmed", var m] when int.TryParse(m, out var uc2) => Commands.Report(cwd, uc2, unconfirmedOnly: true),
         ["report", var n] when int.TryParse(n, out var count) => Commands.Report(cwd, count),
         ["approve"] => Commands.Approve(cwd),
         ["doctor"] => Commands.Doctor(cwd),

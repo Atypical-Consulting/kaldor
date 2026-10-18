@@ -96,10 +96,47 @@ public sealed class BypassTests : IDisposable
     public void Confirm_before_or_absent_refuses_an_unconfirmed_intent(string? value)
     {
         if (value is not null) SetConfirm(value);
+        else
+        {
+            var rules = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(_repo.RulesPath))!.AsObject();
+            Assert.True(rules.Remove("confirm")); // an old rules.json has no such key
+            File.WriteAllText(_repo.RulesPath, rules.ToJsonString());
+            Assert.DoesNotContain("\"confirm\"", File.ReadAllText(_repo.RulesPath));
+        }
         FreezeIntent(confirm: false);
         Stage();
         Assert.Equal(2, Commit().Code);
         Assert.Equal(0, _reviews);
+    }
+
+    [Fact]
+    public void Report_accepts_unconfirmed_before_or_after_the_count()
+    {
+        _repo.Log(new LogEntry(DateTimeOffset.Now, "review", "pass", Unconfirmed: true));
+        _repo.Log(new LogEntry(DateTimeOffset.Now, "review", "pass"));
+        foreach (var args in new[] { new[] { "report", "5", "--unconfirmed" }, ["report", "--unconfirmed", "5"] })
+        {
+            var (code, output, _) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, .. args], _root);
+            Assert.Equal(0, code);
+            Assert.Equal(1, output.Split("ACCEPTED").Length - 1);
+        }
+    }
+
+    [Fact]
+    public void Commits_after_the_user_confirms_are_not_marked_unconfirmed()
+    {
+        SetConfirm("after");
+        FreezeIntent(confirm: false);
+        Stage("one");
+        Assert.Equal(0, Commit().Code);
+        // `intent confirm` itself needs a terminal (see Agent_cannot_confirm_the_intent), so record what it records.
+        Commands.MarkConfirmed(_repo, File.ReadAllText(_repo.IntentPath));
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
+        var reviews = _repo.ReadLog().Where(e => e.Kind == "review").ToList();
+        Assert.Equal(2, reviews.Count);
+        Assert.True(reviews[0].Unconfirmed);
+        Assert.NotEqual(true, reviews[1].Unconfirmed);
     }
 
     [Fact]

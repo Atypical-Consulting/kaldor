@@ -51,6 +51,8 @@ static class Gate
             return frozen && repo.TaskInProgress()
                 ? "The intent is frozen and the task is in progress. Propose the change with `kaldor intent amend \"<text>\"`; only the user can accept it."
                 : null;
+        // Drafts for `kaldor intent confirm --all`: harmless until the user accepts them. Not through a link, which could point at state.
+        if (IsQueueDraft(full) && new DirectoryInfo(repo.QueueDir).LinkTarget is null && new FileInfo(full).LinkTarget is null) return null;
         if (rel.StartsWith(".kaldor/", StringComparison.Ordinal))
             return "Files in .kaldor/ other than intent.md are written by the kaldor tool only.";
         return frozen ? null : NoIntent;
@@ -58,6 +60,15 @@ static class Gate
 
     const string StateIsKaldors =
         "Kaldor's state (.git/kaldor/) and the files in .kaldor/ other than intent.md are written by the kaldor tool only.";
+
+    /// <summary>True for <c>.kaldor/queue/&lt;name&gt;.md</c>, exactly one level down.</summary>
+    static bool IsQueueDraft(string path)
+    {
+        var parts = Parts(path);
+        return parts.Length >= 3 && parts[^3].Equals(".kaldor", StringComparison.OrdinalIgnoreCase) &&
+               parts[^2].Equals("queue", StringComparison.OrdinalIgnoreCase) && parts[^1].EndsWith(".md", StringComparison.OrdinalIgnoreCase) &&
+               parts[^1] is not (".md" or "..md");
+    }
 
     static string[] Parts(string path) => path.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
 
@@ -77,14 +88,14 @@ static class Gate
         if (InGitKaldor(path)) return true;
         var parts = Parts(path);
         var k = Array.FindIndex(parts, p => p.Equals(".kaldor", StringComparison.OrdinalIgnoreCase));
-        return k >= 0 && !(k == parts.Length - 2 && parts[^1].Equals("intent.md", StringComparison.OrdinalIgnoreCase));
+        return k >= 0 && !(k == parts.Length - 3 && IsQueueDraft(path)) && !(k == parts.Length - 2 && parts[^1].Equals("intent.md", StringComparison.OrdinalIgnoreCase));
     }
 
     static string? GuardCommand(string cwd, string command, Reviewer review)
     {
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
-            return "`kaldor approve`, `kaldor intent confirm` and `kaldor intent amend --accept` are reserved for the user. " +
+            return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
                    $"Ask them to run it themselves as {Commands.ForUser("<command>")}.";
         if (found.Writes.Any(IsKaldorState)) return StateIsKaldors;
 

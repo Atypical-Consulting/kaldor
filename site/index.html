@@ -332,6 +332,7 @@ kaldor intent amend --accept                                     <span class="c"
           <tr><td><code>kaldor intent freeze</code></td><td><span class="who">The agent</span></td><td>Records the hash of <code>.kaldor/intent.md</code>. Refused mid-task if another intent is frozen.</td></tr>
           <tr><td><code>kaldor intent wait</code></td><td><span class="who">The agent</span></td><td>Waits, read-only, until you have confirmed the intent, so you never have to tell Claude you did.</td></tr>
           <tr><td><code>kaldor intent amend "…"</code></td><td><span class="who">The agent</span></td><td>Proposes a change to the frozen intent. It has no effect until you accept it.</td></tr>
+          <tr><td><code>kaldor intent confirm --all</code></td><td><span class="who human">You only</span></td><td>Confirms every draft in <code>.kaldor/queue/</code> up front. Each is used once, when a task freezes exactly that text.</td></tr>
           <tr><td><code>kaldor intent confirm</code></td><td><span class="who human">You only</span></td><td>Confirms the frozen intent. Until then, Claude's commits are refused.</td></tr>
           <tr><td><code>kaldor intent amend --accept</code></td><td><span class="who human">You only</span></td><td>Appends the dated amendment to the intent, then freezes and confirms it again.</td></tr>
           <tr><td><code>kaldor report [count]</code></td><td><span class="who human">You</span></td><td>The latest reviews at intent level (default 10), from every worktree of the repository.</td></tr>

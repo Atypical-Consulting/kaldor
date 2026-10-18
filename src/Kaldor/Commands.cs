@@ -82,6 +82,7 @@ static class Commands
         if (state.IntentHash == hash)
         {
             Console.WriteLine($"Intent already frozen ({hash[..19]}…).");
+            UsePreconfirmation(repo, state, hash, intent);
             return 0;
         }
         if (state.IntentHash is not null && repo.TaskInProgress())
@@ -89,8 +90,9 @@ static class Commands
                 "Another intent is frozen and the work tree has uncommitted changes. Commit or discard them before " +
                 "starting a new task, or propose a change to the current intent with `kaldor intent amend \"<text>\"`.");
 
-        repo.SaveState(state with { IntentHash = hash });
+        repo.SaveState(state with { IntentHash = hash, ConfirmedHash = null }); // a new freeze is confirmed afresh, even for text confirmed before
         repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", IntentHash: hash, Intent: intent));
+        if (UsePreconfirmation(repo, repo.LoadState(), hash, intent)) return 0;
         if (repo.LoadRules().ConfirmAfter)
             Console.WriteLine($"Intent frozen ({hash[..19]}…). Commits will not wait for it (confirm: after in rules.json); " +
                               $"the user can still confirm it with {ForUser("intent confirm")}.");
@@ -98,6 +100,19 @@ static class Commands
             Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
                               "commits wait for it, edits do not. Run `kaldor intent wait` in the background to continue as soon as they do.");
         return 0;
+    }
+
+    /// <summary>
+    /// A hash the user accepted with <c>intent confirm --all</c> confirms the freeze of exactly that text, once.
+    /// Only the human-only command writes <c>Preconfirmed</c>; the agent can only offer text that was shown to the user.
+    /// </summary>
+    static bool UsePreconfirmation(Repo repo, State state, string hash, string intent)
+    {
+        if (state.ConfirmedHash == hash || state.Preconfirmed?.Contains(hash) != true) return false;
+        repo.SaveState(state with { ConfirmedHash = hash, Preconfirmed = state.Preconfirmed.Where(h => h != hash).ToList() });
+        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent, Summary: "Confirmed up front with intent confirm --all"));
+        Console.WriteLine("Intent frozen and already confirmed by the user.");
+        return true;
     }
 
     /// <summary>
@@ -161,6 +176,40 @@ static class Commands
 
         MarkConfirmed(repo, intent);
         Console.WriteLine("Intent confirmed. Claude's commits are now reviewed against it.");
+        return 0;
+    }
+
+    /// <summary>The user reviews every draft in .kaldor/queue/ and accepts the ones their agent may later freeze.</summary>
+    public static int ConfirmAll(string cwd)
+    {
+        RequireTerminal("intent confirm --all");
+        return ConfirmDrafts(RequireRepo(cwd), ConfirmByHuman);
+    }
+
+    internal static int ConfirmDrafts(Repo repo, Func<string, bool> ask)
+    {
+        var drafts = Directory.Exists(repo.QueueDir)
+            ? Directory.GetFiles(repo.QueueDir, "*.md").OrderBy(f => Path.GetFileName(f), StringComparer.Ordinal).ToList()
+            : [];
+        if (drafts.Count == 0)
+        {
+            Console.Error.WriteLine("No draft intents in .kaldor/queue/.");
+            return 1;
+        }
+        var accepted = new List<string>();
+        foreach (var file in drafts)
+        {
+            var text = File.ReadAllText(file); // the hash is of what is shown here, not of a later read
+            Console.WriteLine($"{Path.GetFileName(file)}:\n\n{text.Trim()}\n");
+            if (!ask("Confirm this intent? Claude's commits will be reviewed against it once a task freezes it.")) continue;
+            var hash = Repo.Hash(text);
+            accepted.Add(hash);
+            repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: text,
+                Summary: $"Pre-confirmed by {Environment.UserName} ({Path.GetFileName(file)})"));
+        }
+        // A new run replaces the set.
+        repo.SaveState(repo.LoadState() with { Preconfirmed = accepted.Distinct().ToList() });
+        Console.WriteLine($"{accepted.Count} of {drafts.Count} intent(s) pre-confirmed. Each is used once, when a task freezes exactly that text.");
         return 0;
     }
 

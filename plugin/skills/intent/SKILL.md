@@ -34,6 +34,15 @@ conversation, so the intent must say everything the reviewer needs.
 If `kaldor intent freeze` says commits will not wait for confirmation (`"confirm": "after"` in `.kaldor/rules.json`, set by the
 user for unattended sessions), skip steps 5 and 6: commits are still reviewed, and the user checks the intent afterwards.
 
+## Several tasks in one session
+
+When the session covers several tasks and the user will not be around, draft one intent per task into
+`.kaldor/queue/<name>.md` (same format; gitignored). Show them, then ask the user to run
+`dnx Atypical.Kaldor intent confirm --all` in a terminal outside Claude Code: they accept each draft one by one.
+When a task starts, copy its draft byte for byte to `.kaldor/intent.md` and run `kaldor intent freeze`: if the text
+is one they accepted, it is already confirmed and commits go straight to the review. Each acceptance is used once;
+an edited draft needs the normal `kaldor intent confirm`. You cannot run `--all` yourself.
+
 ## Committing
 
 Stage and commit as usual. The commit waits for the review (up to a few minutes).

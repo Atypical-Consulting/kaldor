@@ -66,6 +66,11 @@ public class CommandParserTests
     [InlineData("git commit -n -m x", true)]
     [InlineData("git commit -anm x", true)]
     [InlineData("git -c core.hooksPath=/dev/null commit -m x", true)]
+    [InlineData("GIT_INDEX_FILE=/tmp/i git commit -m x", true)]
+    [InlineData("GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/tmp git commit -m x", true)]
+    [InlineData("git --git-dir=.git --work-tree=. commit -m x", true)]
+    [InlineData("git --git-dir .git commit -m x", true)]
+    [InlineData("FOO=1 git commit -m x", false)]
     [InlineData("git commit -am 'no -n here'", false)]
     [InlineData("git commit -m -n", false)]
     public void Spots_hook_skipping(string command, bool skips) =>

@@ -15,6 +15,9 @@ static class TestRepo
         Directory.CreateDirectory(Path.Combine(root, ".kaldor"));
         File.WriteAllText(Path.Combine(root, ".kaldor", "rules.json"), JsonSerializer.Serialize(Rules.Default, Repo.Json));
         File.WriteAllText(Path.Combine(root, ".kaldor", ".gitignore"), "*\n!.gitignore\n!rules.json\n");
+        // Kaldor's hook as the gate recognises it; a stub, so the fixture's own commits run nothing.
+        File.WriteAllText(Path.Combine(root, ".git", "hooks", "pre-commit"), "#!/bin/sh\n# dnx Atypical.Kaldor check\nexit 0\n");
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(Path.Combine(root, ".git", "hooks", "pre-commit"), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         Proc.Git(root, "add", "-A");
         Proc.Git(root, "commit", "-q", "-m", "init");
     }

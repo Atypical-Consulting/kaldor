@@ -32,10 +32,92 @@ public sealed class BypassTests : IDisposable
     {
         _reviews++;
         _seen = rules;
+        _diff = diff;
         return _next;
     }
 
     Rules? _seen;
+    string? _diff;
+
+    void Attributes(string text) => File.WriteAllText(Path.Combine(_root, ".git", "info", "attributes"), text);
+
+    [Fact]
+    public void Textconv_cannot_empty_the_staged_diff()
+    {
+        Proc.Git(_root, "config", "diff.x.textconv", "true");
+        Attributes("* diff=x\n");
+        FreezeIntent();
+        Stage("secret line");
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(1, _reviews);
+        Assert.Contains("+secret line", _diff);
+    }
+
+    [Fact]
+    public void A_diff_attribute_cannot_hide_a_text_change()
+    {
+        Attributes("* -diff\n");
+        FreezeIntent();
+        Stage("secret line");
+        Assert.Equal(0, Commit().Code);
+        Assert.Contains("+secret line", _diff);
+        Assert.DoesNotContain("Binary files", _diff);
+    }
+
+    [Fact]
+    public void Real_binary_files_stay_binary()
+    {
+        FreezeIntent();
+        File.WriteAllBytes(Path.Combine(_root, "a.bin"), [1, 0, 2, 0, 3]);
+        Proc.Git(_root, "add", "a.bin");
+        Assert.Equal(0, Commit().Code);
+        Assert.Contains("Binary files", _diff);
+    }
+
+    [Fact]
+    public void Fsmonitor_does_not_run_inside_the_gate()
+    {
+        if (OperatingSystem.IsWindows()) return; // the fixture's monitor is a shell script
+        var marker = Path.Combine(_root, "..", "ran-" + Guid.NewGuid().ToString("N"));
+        var script = Path.Combine(_root, "..", "fsm-" + Guid.NewGuid().ToString("N") + ".sh");
+        File.WriteAllText(script, $"#!/bin/sh\ntouch '{marker}'\n");
+        File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        FreezeIntent();
+        Stage();
+        Proc.Git(_root, "config", "core.fsmonitor", script); // after the fixture's own git calls
+        Hook("Write", new { file_path = _repo.IntentPath, content = "x" }); // reads `git status`
+        Assert.Equal(0, Commit().Code);
+        var ran = File.Exists(marker);
+        File.Delete(script);
+        Assert.False(ran);
+    }
+
+    [Fact]
+    public void A_hook_that_is_not_executable_blocks_commits()
+    {
+        if (OperatingSystem.IsWindows()) return; // git runs hooks by name there
+        FreezeIntent();
+        Stage();
+        File.SetUnixFileMode(_repo.HookPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("pre-commit hook", err);
+        Assert.Equal(0, _reviews);
+    }
+
+    [Fact]
+    public void A_redirected_hooks_path_blocks_commits()
+    {
+        FreezeIntent();
+        Stage();
+        var empty = Path.Combine(_root, ".git", "empty-hooks");
+        Directory.CreateDirectory(empty);
+        Proc.Git(_root, "config", "core.hooksPath", empty);
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("pre-commit hook", err);
+        Assert.Equal(0, _reviews);
+    }
 
     [Fact]
     public void Git_apply_cannot_rewrite_the_rules()

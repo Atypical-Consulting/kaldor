@@ -320,13 +320,29 @@ static class Commands
         Line(repo.Enabled, "Kaldor enabled in this repository (.kaldor/rules.json)", "Run `kaldor init`.");
         if (repo.Enabled)
         {
-            try
+            void Validate(string label, Func<Rules> load)
             {
-                var confirm = repo.LoadRules().Confirm;
-                if (confirm is not ("before" or "after")) Line(false, "rules.json is valid", $"confirm must be \"before\" or \"after\", not \"{confirm}\".");
-                else Line(true, "rules.json is valid");
+                try
+                {
+                    var confirm = load().Confirm;
+                    if (confirm is not ("before" or "after")) Line(false, label, $"confirm must be \"before\" or \"after\", not \"{confirm}\".");
+                    else Line(true, label);
+                }
+                catch (JsonException ex) { Line(false, label, ex.Message); }
             }
-            catch (JsonException ex) { Line(false, "rules.json is valid", ex.Message); }
+            Rules Parse(string json) => JsonSerializer.Deserialize<Rules>(json, Repo.Json) ?? Rules.Default;
+            Validate("rules.json is valid", repo.LoadRules);
+            if (repo.CommittedRules() is { } committed && File.Exists(repo.RulesPath))
+            {
+                var local = File.ReadAllText(repo.RulesPath);
+                // Compared as rules, not as text: core.autocrlf makes the work-tree file CRLF and the blob LF.
+                string? Norm(string json) { try { return JsonSerializer.Serialize(Parse(json), Repo.Json); } catch (JsonException) { return null; } }
+                if (Norm(local) != Norm(committed) || Norm(local) is null)
+                {
+                    Validate("rules.json in the work tree is valid", () => Parse(local));
+                    Console.WriteLine("warn  rules.json has uncommitted changes; they take effect once you commit them");
+                }
+            }
         }
         Line(repo.HookInstalled, "git pre-commit hook installed", "Run `kaldor init`.");
         Console.WriteLine($"      intent: {(repo.LoadState().IntentHash is null ? "none frozen" : "frozen")}");

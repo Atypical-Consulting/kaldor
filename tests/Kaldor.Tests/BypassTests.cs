@@ -27,7 +27,78 @@ public sealed class BypassTests : IDisposable
     ReviewResult FakeReview(Rules rules, string intent, string diff)
     {
         _reviews++;
+        _seen = rules;
         return _next;
+    }
+
+    Rules? _seen;
+
+    [Fact]
+    public void Git_apply_cannot_rewrite_the_rules()
+    {
+        FreezeIntent();
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [], Confirm = "after" }, Repo.Json));
+        var patch = Path.Combine(_root, "..", "p-" + Guid.NewGuid().ToString("N") + ".patch");
+        File.WriteAllText(patch, Proc.Git(_root, "diff"));
+        Proc.Git(_root, "checkout", "--", ".kaldor/rules.json");
+        Proc.Git(_root, "apply", patch);
+        File.Delete(patch);
+        Stage();
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(Rules.Default.BlockOn, _seen!.BlockOn);
+    }
+
+    [Fact]
+    public void Removing_rules_json_does_not_turn_Kaldor_off()
+    {
+        Proc.Git(_root, "rm", "-q", ".kaldor/rules.json");
+        var (code, err) = Hook("Write", new { file_path = Path.Combine(_root, "a.txt"), content = "x" });
+        Assert.Equal(2, code);
+        Assert.Contains("No frozen intent", err);
+    }
+
+    [Fact]
+    public void Committing_a_rules_change_needs_approve()
+    {
+        FreezeIntent();
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("Atypical.Kaldor approve", err);
+        Assert.Equal(0, _reviews);
+
+        var state = _repo.LoadState();
+        state.Passes.Add(new Pass(Repo.Hash(_repo.StagedDiff()), state.IntentHash!, "approve"));
+        _repo.SaveState(state);
+        Assert.Equal(0, Commit().Code);
+    }
+
+    [Fact]
+    public void Confirm_after_in_the_work_tree_only_is_ignored()
+    {
+        SetConfirm("after", commit: false);
+        FreezeIntent(confirm: false);
+        Stage();
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("not confirmed", err);
+    }
+
+    [Fact]
+    public void Uncommitted_setup_uses_the_work_tree_rules()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "kaldor-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, ".kaldor"));
+            Proc.Git(root, "init", "-q", "-b", "main");
+            File.WriteAllText(Path.Combine(root, ".kaldor", "rules.json"), JsonSerializer.Serialize(Rules.Default with { BlockOn = ["scope_creep"] }, Repo.Json));
+            var repo = Repo.Find(root)!;
+            Assert.True(repo.Enabled);
+            Assert.Equal(["scope_creep"], repo.LoadRules().BlockOn);
+        }
+        finally { TestRepo.Delete(root); }
     }
 
     (int Code, string Err) Hook(string tool, object toolInput, string? cwd = null)
@@ -64,8 +135,14 @@ public sealed class BypassTests : IDisposable
         Assert.Equal(1, _reviews);
     }
 
-    void SetConfirm(string value) =>
+    /// <summary>Writes the rules and, as the user would, commits them: the gate applies the rules at HEAD.</summary>
+    void SetConfirm(string value, bool commit = true)
+    {
         File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { Confirm = value }, Repo.Json));
+        if (!commit) return;
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        Proc.Git(_root, "commit", "-q", "--allow-empty", "-m", "rules");
+    }
 
     [Fact]
     public void Confirm_after_sends_an_unconfirmed_intent_to_the_reviewer()
@@ -166,6 +243,82 @@ public sealed class BypassTests : IDisposable
         SetConfirm("sometimes");
         var (_, output, _) = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "doctor"], _root);
         Assert.Contains("FAIL  rules.json is valid", output);
+    }
+
+    [Fact]
+    public void Doctor_warns_when_rules_json_differs_from_HEAD()
+    {
+        string Doctor() => Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "doctor"], _root).Out;
+        Assert.DoesNotContain("uncommitted changes", Doctor());
+
+        // core.autocrlf: CRLF in the work tree, LF in the blob. Same rules, so no warning.
+        File.WriteAllText(_repo.RulesPath, File.ReadAllText(_repo.RulesPath).Replace("\r\n", "\n").Replace("\n", "\r\n"));
+        Assert.DoesNotContain("uncommitted changes", Doctor());
+
+        SetConfirm("after", commit: false);
+        Assert.Contains("rules.json has uncommitted changes", Doctor());
+    }
+
+    [Fact]
+    public void Doctor_validates_the_work_tree_rules_too()
+    {
+        SetConfirm("aftr", commit: false);
+        var output = Proc.Run("dotnet", [typeof(Commands).Assembly.Location, "doctor"], _root).Out;
+        Assert.Contains("ok    rules.json is valid", output);
+        Assert.Contains("FAIL  rules.json in the work tree is valid", output);
+    }
+
+    [Fact]
+    public void A_replace_ref_cannot_change_the_rules_at_HEAD()
+    {
+        SetConfirm("before");
+        var head = Proc.Git(_root, "rev-parse", "HEAD:.kaldor/rules.json").Trim();
+        var (_, evil, _) = Proc.Run("git", ["hash-object", "-w", "--stdin"], _root,
+            stdin: JsonSerializer.Serialize(Rules.Default with { Confirm = "after" }, Repo.Json));
+        Proc.Git(_root, "replace", head, evil.Trim());
+        Assert.Equal("before", _repo.LoadRules().Confirm);
+    }
+
+    [Fact]
+    public void A_replace_ref_cannot_hide_a_staged_rules_change()
+    {
+        SetConfirm("before");
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { Confirm = "after" }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        var head = Proc.Git(_root, "rev-parse", "HEAD:.kaldor/rules.json").Trim();
+        var staged = Proc.Git(_root, "rev-parse", ":.kaldor/rules.json").Trim();
+        Proc.Git(_root, "replace", head, staged);
+        Assert.True(_repo.StagedKaldorChange());
+    }
+
+    [Fact]
+    public void A_textconv_cannot_hide_a_staged_rules_change()
+    {
+        FreezeIntent();
+        Proc.Git(_root, "config", "diff.k.textconv", "echo same");
+        File.WriteAllText(Path.Combine(_root, ".gitattributes"), "*.json diff=k\n*.txt diff=k\n");
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = [] }, Repo.Json));
+        Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
+        var (code, err) = Commit();
+        Assert.Equal(2, code);
+        Assert.Contains("Atypical.Kaldor approve", err);
+        Assert.Equal(0, _reviews);
+
+        Proc.Git(_root, "reset", "-q", ".kaldor/rules.json");
+        Stage("real change");
+        Assert.Contains("real change", _repo.StagedDiff());
+    }
+
+    [Fact]
+    public void Without_rules_json_at_HEAD_the_gate_uses_the_work_tree_rules()
+    {
+        Proc.Git(_root, "rm", "-q", "--cached", ".kaldor/rules.json");
+        Proc.Git(_root, "commit", "-q", "-m", "no rules");
+        File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = ["scope_creep"] }, Repo.Json));
+        FreezeIntent();
+        Stage();
+        Assert.Equal(0, Commit().Code);
+        Assert.Equal(["scope_creep"], _seen!.BlockOn);
     }
 
     [Fact]
@@ -408,7 +561,8 @@ public sealed class BypassTests : IDisposable
     [Fact]
     public void Repositories_without_kaldor_are_left_alone()
     {
-        File.Delete(_repo.RulesPath);
+        Proc.Git(_root, "rm", "-q", ".kaldor/rules.json");
+        Proc.Git(_root, "commit", "-q", "-m", "drop kaldor");
         Stage();
         Assert.Equal(0, Commit().Code);
         Assert.Equal(0, Hook("Write", new { file_path = Path.Combine(_root, "b.txt") }).Code);

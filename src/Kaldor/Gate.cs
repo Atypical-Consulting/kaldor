@@ -112,9 +112,13 @@ static class Gate
                    "`kaldor intent amend \"<text>\"` and ask the user to accept it.";
 
         var diff = repo.StagedDiff();
-        if (diff.Length == 0) return null;
+        var kaldorChange = repo.StagedKaldorChange();
+        if (diff.Length == 0 && !kaldorChange) return null;
         var diffHash = Repo.Hash(diff);
         if (state.Passes.Any(p => p.DiffHash == diffHash && p.IntentHash == intentHash)) return null;
+        if (kaldorChange)
+            return "This commit changes Kaldor's own files in .kaldor/. Only the user can allow that: ask them to review " +
+                   $"the staged diff and run {Commands.ForUser("approve")}.";
         var rules = repo.LoadRules();
         var unconfirmed = state.ConfirmedHash != intentHash;
         if (unconfirmed && !rules.ConfirmAfter)

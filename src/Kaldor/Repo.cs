@@ -113,7 +113,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
     public bool HookInstalled => File.Exists(HookPath) && File.ReadAllText(HookPath).Contains("Atypical.Kaldor");
 
     /// <summary>Kaldor only acts on repositories where <c>kaldor init</c> was run.</summary>
-    public bool Enabled => File.Exists(RulesPath);
+    public bool Enabled => File.Exists(RulesPath) || CommittedRules() is not null;
 
     public static Repo? Find(string cwd)
     {
@@ -175,7 +175,7 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
         "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
 
     /// <summary>The staged diff, exactly as the reviewer sees it. Inside a git hook this honours GIT_INDEX_FILE.</summary>
-    public string StagedDiff() => Proc.Git(Root, "diff", "--cached", "--no-color", "--no-ext-diff", "-U5");
+    public string StagedDiff() => Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--no-color", "--no-ext-diff", "--no-textconv", "-U5");
 
     /// <summary>True when the work tree has changes outside <c>.kaldor/</c>: a task is in progress.</summary>
     public bool TaskInProgress() =>
@@ -183,8 +183,23 @@ sealed partial class Repo(string root, string commonStateDir, string stateDir, s
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Any(line => line.Length > 3 && !line[3..].Trim('"').StartsWith(".kaldor/", StringComparison.Ordinal));
 
+    /// <summary><c>.kaldor/rules.json</c> as committed at HEAD, or null when HEAD has none.</summary>
+    public string? CommittedRules()
+    {
+        var (code, output, _) = Proc.Run("git", ["--no-replace-objects", "show", "HEAD:.kaldor/rules.json"], Root);
+        return code == 0 ? output : null;
+    }
+
+    /// <summary>
+    /// The rules the gate applies: those committed at HEAD, so no command can change them without a commit. Until the
+    /// setup is first committed, the work-tree file.
+    /// </summary>
     public Rules LoadRules() =>
-        JsonSerializer.Deserialize<Rules>(File.ReadAllText(RulesPath), Json) ?? Rules.Default;
+        JsonSerializer.Deserialize<Rules>(CommittedRules() ?? File.ReadAllText(RulesPath), Json) ?? Rules.Default;
+
+    /// <summary>True when the staged changes touch anything in <c>.kaldor/</c>.</summary>
+    public bool StagedKaldorChange() =>
+        Proc.Git(Root, "--no-replace-objects", "diff", "--cached", "--name-only", "--", ":(top).kaldor/").Length > 0;
 
     public State LoadState() =>
         File.Exists(StatePath) ? JsonSerializer.Deserialize<State>(File.ReadAllText(StatePath), Json) ?? State.Empty : State.Empty;

@@ -47,6 +47,7 @@ static class Commands
         Directory.CreateDirectory(repo.Dir);
         if (!File.Exists(repo.RulesPath))
             File.WriteAllText(repo.RulesPath, JsonSerializer.Serialize(Rules.Default, Repo.Json));
+        _ = Repo.Find(cwd); // seeds the reviewed set: the history that exists now is the only history Kaldor trusts
         // Everything but the rules is per-machine state: intent, verdict cache and review history.
         File.WriteAllText(Path.Combine(repo.Dir, ".gitignore"), "*\n!.gitignore\n!rules.json\n");
         Console.WriteLine($"Created {Path.GetRelativePath(cwd, repo.RulesPath)}. Commit .kaldor/ yourself, from your own " +
@@ -319,7 +320,7 @@ static class Commands
         RequireTerminal("approve");
         var repo = RequireRepo(cwd);
         var pending = repo.LoadState();
-        var unreviewed = pending.ReviewedTip is null ? [] : repo.UnreviewedCommits(pending);
+        var unreviewed = repo.UnreviewedCommits(Repo.PushRoots);
         if (unreviewed.Count > 0)
         {
             Console.WriteLine("These commits reached HEAD without a Kaldor review:");

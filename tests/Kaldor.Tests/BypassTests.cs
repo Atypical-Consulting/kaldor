@@ -146,7 +146,11 @@ public sealed class BypassTests : IDisposable
         if (!commit) return;
         Proc.Git(_root, "add", "-f", ".kaldor/rules.json");
         Proc.Git(_root, "commit", "-q", "--allow-empty", "-m", "rules");
+        UserCommitted();
     }
+
+    /// <summary>The user committed from their own terminal, which Kaldor does not review; they approve it.</summary>
+    void UserCommitted() => _repo.ApproveCommits(_repo.LoadState(), _repo.UnreviewedCommits(Repo.PushRoots));
 
     [Fact]
     public void Confirm_after_sends_an_unconfirmed_intent_to_the_reviewer()
@@ -318,6 +322,7 @@ public sealed class BypassTests : IDisposable
     {
         Proc.Git(_root, "rm", "-q", "--cached", ".kaldor/rules.json");
         Proc.Git(_root, "commit", "-q", "-m", "no rules");
+        UserCommitted();
         File.WriteAllText(_repo.RulesPath, JsonSerializer.Serialize(Rules.Default with { BlockOn = ["scope_creep"] }, Repo.Json));
         FreezeIntent();
         Stage();
@@ -1003,15 +1008,37 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
-    public void First_check_trusts_existing_history()
+    public void The_history_that_exists_when_Kaldor_first_runs_is_trusted_and_nothing_after_it()
     {
         Side();
         G("cherry-pick", G2("rev-parse", "side"));
+        File.Delete(_repo.ReviewedPath); // Kaldor has not run on this repository yet
         FreezeIntent();
         Stage();
-        Assert.Null(_repo.LoadState().ReviewedTip);
         Assert.Equal(0, Commit().Code);
-        Assert.Equal(G2("rev-parse", "HEAD"), _repo.LoadState().ReviewedTip);
+        G("commit", "-q", "-m", "change");
+
+
+        File.WriteAllText(Path.Combine(_root, "c.txt"), "c");
+        G("add", "c.txt");
+        G("update-ref", "HEAD", G2("commit-tree", G2("write-tree"), "-p", "HEAD", "-m", "later"));
+        Stage("two");
+        Assert.Equal(2, Commit().Code);
+    }
+
+    [Fact]
+    public void A_repository_with_per_worktree_state_from_an_older_version_upgrades_without_refusals()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        Stage("two");
+        Assert.Equal(0, Commit().Code); // reviewed, recorded in this worktree's state.json
+        File.Delete(_repo.ReviewedPath);  // as if Kaldor 1.4 had written it
+        G("commit", "-q", "-m", "two");
+        Assert.Equal(0, Commit("git push").Code);
+        Stage("three");
+        Assert.Equal(0, Commit().Code);
+        Assert.True(_repo.LoadReviewed().Seeded);
     }
 
     [Fact]
@@ -1095,7 +1122,7 @@ public sealed class BypassTests : IDisposable
     {
         Bypass("cherry-pick");
         var state = _repo.LoadState();
-        _repo.ApproveCommits(state, _repo.UnreviewedCommits(state)); // what `kaldor approve` records once the user says yes
+        _repo.ApproveCommits(state, _repo.UnreviewedCommits(Repo.PushRoots)); // what `kaldor approve` records once the user says yes
         Stage("two");
         Assert.Equal(0, Commit().Code);
         Assert.Equal(0, Commit("git push").Code);
@@ -1116,12 +1143,144 @@ public sealed class BypassTests : IDisposable
     }
 
     [Fact]
-    public void Push_in_a_repository_with_a_clean_history_goes_through_and_only_HEAD_counts()
+    public void Push_in_a_repository_with_a_clean_history_goes_through()
     {
         FreezeIntent();
         CommitReviewed("a.txt", "one");
         Assert.Equal(0, Commit("git -C . push origin main").Code);
-        Side();
+        G("checkout", "-q", "-b", "reviewed");
+        CommitReviewed("r.txt", "r");
+        G("checkout", "-q", "main");
+        Assert.Equal(0, Commit("git push --all").Code);
+    }
+
+    // ---- unreviewed commits on another branch or in another worktree (#53) ----
+
+    /// <summary>A commit nobody reviewed, on branch x, made with commit-tree and update-ref.</summary>
+    string Smuggle()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        File.WriteAllText(Path.Combine(_root, "evil.txt"), "evil");
+        G("add", "evil.txt");
+        var commit = G2("commit-tree", G2("write-tree"), "-p", "HEAD", "-m", "evil");
+        G("reset", "-q");
+        File.Delete(Path.Combine(_root, "evil.txt"));
+        G("update-ref", "refs/heads/x", commit);
+        return G2("rev-parse", "--short", commit);
+    }
+
+    void Ready(string worktree)
+    {
+        const string intent = "# Intent\nGoal: work in a worktree\n";
+        FreezeIn(worktree, intent);
+        Commands.MarkConfirmed(Repo.Find(worktree)!, intent);
+    }
+
+    string Worktree(params string[] args)
+    {
+        var path = _root + "-w" + _worktrees.Count;
+        G(["worktree", "add", "-q", .. args.Select(a => a == "<path>" ? path : a)]);
+        _worktrees.Add(path);
+        return path;
+    }
+
+    [Fact]
+    public void A_push_checks_other_branches_and_names_the_branch()
+    {
+        var sha = Smuggle();
+        var (code, err) = Commit("git push origin x");
+        Assert.Equal(2, code);
+        Assert.Contains(sha, err);
+        Assert.Contains("(on x)", err);
+        Assert.Equal(2, Commit("git push --all").Code);
+        Assert.Equal(2, Commit("git push origin main").Code); // a push checks every branch, whatever it sends
+        G("tag", "t", "x");
+        G("branch", "-D", "x");
+        Assert.Equal(2, Commit("git push --tags").Code);
+    }
+
+    [Fact]
+    public void A_new_worktree_does_not_trust_the_branch_it_starts_from()
+    {
+        var sha = Smuggle();
+        var t = Worktree("<path>", "x");
+        Ready(t);
+        var (code, err) = Commit("git push origin x", t);
+        Assert.Equal(2, code);
+        Assert.Contains(sha, err);
+        File.WriteAllText(Path.Combine(t, "a.txt"), "two");
+        Proc.Git(t, "add", "a.txt");
+        var (code2, err2) = Commit("git commit -m two", t);
+        Assert.Equal(2, code2);
+        Assert.Contains(sha, err2);
+    }
+
+    [Fact]
+    public void A_commit_that_skipped_git_commit_in_a_new_branch_worktree_is_refused_on_push()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        var t = Worktree("-b", "y", "<path>");
+        File.WriteAllText(Path.Combine(t, "evil.txt"), "evil");
+        Proc.Git(t, "add", "evil.txt");
+        Proc.Git(t, "commit", "-q", "-m", "evil, made without the gate");
+        Assert.Equal(2, Commit("git push origin y", t).Code);
+    }
+
+    [Fact]
+    public void A_commit_reviewed_in_one_worktree_passes_in_another()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        var t = Worktree("-b", "w", "<path>");
+        Ready(t);
+        File.WriteAllText(Path.Combine(t, "w.txt"), "w");
+        Proc.Git(t, "add", "w.txt");
+        Assert.Equal(0, Commit("git commit -m w", t).Code);
+        Proc.Git(t, "commit", "-q", "-m", "w");
+        Assert.Equal(0, Commit("git push origin w", t).Code);
+        Assert.Equal(0, Commit("git push origin w").Code);
+        G("merge", "-q", "--ff-only", "w");
+        Stage("two");
+        Assert.Equal(0, Commit().Code);
         Assert.Equal(0, Commit("git push").Code);
+        var u = Worktree("--detach", "<path>", "w");
+        Assert.Equal(0, Commit("git push origin w", u).Code);
+    }
+
+    [Fact]
+    public void Approving_in_one_worktree_clears_the_commits_for_every_worktree()
+    {
+        Smuggle();
+        var t = Worktree("--detach", "<path>");
+        Assert.Equal(2, Commit("git push", t).Code);
+        var wrepo = Repo.Find(t)!;
+        wrepo.ApproveCommits(wrepo.LoadState(), wrepo.UnreviewedCommits(Repo.PushRoots)); // what `kaldor approve` records
+        Assert.Equal(0, Commit("git push").Code);
+        Assert.Equal(0, Commit("git push origin x", t).Code);
+    }
+
+    [Fact]
+    public void A_push_of_a_raw_commit_id_is_refused()
+    {
+        FreezeIntent();
+        CommitReviewed("a.txt", "one");
+        Assert.Equal(2, Commit("git push origin $(git commit-tree HEAD^{tree} -p HEAD -m evil):refs/heads/main").Code);
+        Assert.Equal(2, Commit("git push origin " + G2("rev-parse", "HEAD") + ":refs/heads/main").Code);
+        Assert.Equal(2, Commit("git push origin refs/stash:refs/heads/main").Code);
+        Assert.Equal(2, Commit("git push origin ORIG_HEAD:main").Code);
+        Assert.Equal(0, Commit("git push origin HEAD:refs/heads/main").Code);
+        Assert.Equal(0, Commit("git push origin +main:refs/heads/main").Code);
+    }
+
+    [Fact]
+    public void Refs_that_exist_when_Kaldor_first_runs_are_trusted()
+    {
+        File.Delete(_repo.ReviewedPath);
+        Side(); // exists before Kaldor first runs
+        FreezeIntent();
+        G("update-ref", "refs/heads/old", G2("rev-parse", "side"));
+        Assert.Equal(0, Commit("git push --all").Code);
     }
 }

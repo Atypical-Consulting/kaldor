@@ -88,6 +88,8 @@ static partial class Gate
 
     static string? GuardCommand(string cwd, string command, Reviewer review)
     {
+        // Seeds the shared reviewed set (see Repo.LoadReviewed) before this command can add refs the set would then trust.
+        _ = Repo.Find(cwd);
         var found = CommandParser.Analyze(command, cwd);
         if (found.HumanOnly)
             return "`kaldor approve`, `kaldor intent confirm` (also `--all`) and `kaldor intent amend --accept` are reserved for the user. " +
@@ -112,36 +114,30 @@ static partial class Gate
                        "and Kaldor checks the commits before the command runs.";
             var repo = Repo.Find(dir);
             if (repo is not { Enabled: true }) continue;
-            var state = repo.LoadState();
-            if (CheckHistory(repo, ref state) is { } reason) return reason;
+            if (found.PushesRawCommit)
+                return "Push branches or tags by name: a push of a raw commit id cannot be checked against the review history.";
+            if (CheckHistory(repo, Repo.PushRoots) is { } reason) return reason;
         }
         return null;
     }
 
     /// <summary>
-    /// Refuses when a commit on HEAD went in without <c>git commit</c> and was never reviewed or approved (cherry-pick,
-    /// commit-tree, revert, am, a hand-resolved rebase...). Otherwise the commits are checked from now on.
-    /// The first check in a repository, or worktree, trusts the history that exists.
+    /// Refuses when a commit reachable from <paramref name="roots"/> went in without <c>git commit</c> and was never reviewed
+    /// or approved (cherry-pick, commit-tree, revert, am, a hand-resolved rebase...). Only the history that existed when
+    /// Kaldor first ran on the repository is trusted, in every worktree.
     /// </summary>
-    static string? CheckHistory(Repo repo, ref State state)
+    static string? CheckHistory(Repo repo, string[] roots)
     {
-        if (state.ReviewedTip is not null)
-        {
-            var unreviewed = repo.UnreviewedCommits(state);
-            if (unreviewed.Count > 0)
-                return "These commits were not reviewed by Kaldor: " +
-                       string.Join(", ", unreviewed.Take(10).Select(c => $"`{c.Subject}`")) + (unreviewed.Count > 10 ? ", ..." : "") +
-                       ". Commits must go through `git commit`. Ask the user to look at them and run " +
-                       $"{Commands.ForUser("approve")}, or remove them (`git reset --keep <last reviewed commit>`).";
-        }
-        var head = repo.Head();
-        if (head != state.ReviewedTip)
-        {
-            state = state with { ReviewedTip = head };
-            repo.SaveState(state);
-        }
-        return null;
+        var unreviewed = repo.UnreviewedCommits(roots);
+        if (unreviewed.Count == 0) return null;
+        return "These commits were not reviewed by Kaldor: " +
+               string.Join(", ", unreviewed.Take(10).Select(c => $"`{c.Subject}`{OnRefs(repo, c.Sha)}")) + (unreviewed.Count > 10 ? ", ..." : "") +
+               ". Commits must go through `git commit`. Ask the user to look at them and run " +
+               $"{Commands.ForUser("approve")}, or remove them (`git reset --keep <last reviewed commit>`, or delete the branch).";
     }
+
+    static string OnRefs(Repo repo, string sha) =>
+        repo.RefsContaining(sha) is { Length: > 0 } refs ? $" (on {string.Join(", ", refs.Take(3))})" : "";
 
     /// <summary>Checks the staged diff of <paramref name="repo"/>. Returns null when the commit may go through.</summary>
     public static string? Evaluate(Repo repo, Reviewer review)
@@ -155,7 +151,7 @@ static partial class Gate
             return "The intent changed after it was frozen. Restore it, or propose the change with " +
                    "`kaldor intent amend \"<text>\"` and ask the user to accept it.";
 
-        if (CheckHistory(repo, ref state) is { } unreviewed) return unreviewed;
+        if (CheckHistory(repo, Repo.CommitRoots) is { } unreviewed) return unreviewed;
 
         var diff = repo.StagedDiff();
         var kaldorChange = repo.StagedKaldorChange();

@@ -146,6 +146,28 @@
         <div><h2><span class="disc go">6</span>The gate records the verdict</h2><p>Accepted: a pass is stored in <code>.git/kaldor/state.json</code> for that exact diff and intent, and the command runs. Refused: exit 2, and Claude receives the deviations to fix. Every review is logged in <code>.kaldor/log/</code>.</p></div>
         <div><h2><span class="disc fill">7</span>A second lock at git</h2><p>The git <code>pre-commit</code> hook runs <code>kaldor check</code>, the same evaluation, on the index git is about to commit. When the gate already passed that diff, it costs nothing. When it did not (a commit from a script, or files staged in the same command, as in <code>git add -A &amp;&amp; git commit</code>), it calls the reviewer itself, and a refusal aborts the commit. Only commits made inside Claude Code are checked; yours are not.</p></div>
       </div>
+
+      <h3>Plan mode or Kaldor?</h3>
+      <p>Both start the same way: Claude says what it will do before touching the code, and you agree. After that, they have little in common.</p>
+      <p><strong>Plan mode is a conversation phase.</strong> It asks Claude to think and propose a plan before editing. Once you accept it, nothing binding remains: the plan is not recorded anywhere in a form that can be checked, nobody checks the code against it, Claude can drift from it, widen the scope or touch files nobody expected, and it lives only in that session. Another session or another worktree knows nothing of it.</p>
+      <p><strong>A Kaldor intent is a contract checked at every commit.</strong></p>
+      <ul>
+        <li><strong>Frozen by hash.</strong> Editing <code>intent.md</code> mid-task is refused; a change goes through an amendment only you can accept.</li>
+        <li><strong>Confirmed by you, outside the session.</strong> <code>kaldor intent confirm</code> needs an interactive terminal, so Claude cannot vouch for its own intent.</li>
+        <li><strong>Checked by an independent reviewer.</strong> At every commit, a separate <code>claude -p</code> reads only the intent, the rules and the staged diff, never the conversation. It refuses scope creep, changes to sensitive paths, weakened tests and anything that contradicts the intent.</li>
+        <li><strong>Enforced by hooks, not by Claude's goodwill.</strong> The <code>PreToolUse</code> hook and the git <code>pre-commit</code> hook block, and the usual shortcuts are closed: <code>--no-verify</code>, writing Kaldor's state, an <code>approve</code> run by Claude.</li>
+        <li><strong>Traced.</strong> Every freeze, confirmation, review and forced approval is logged, and <code>kaldor report</code> shows them across worktrees.</li>
+      </ul>
+      <table class="ref">
+        <thead><tr><th scope="col"></th><th scope="col">Plan mode</th><th scope="col">Kaldor intent</th></tr></thead>
+        <tbody>
+          <tr><td>Role</td><td data-label="Plan mode">Helps think before acting</td><td data-label="Kaldor intent">A contract enforced up to the commit</td></tr>
+          <tr><td>When</td><td data-label="Plan mode">Before editing, then forgotten</td><td data-label="Kaldor intent">The whole task, checked at every commit</td></tr>
+          <tr><td>Who guarantees it</td><td data-label="Plan mode">Claude itself</td><td data-label="Kaldor intent">An independent reviewer and hooks</td></tr>
+          <tr><td>Trace</td><td data-label="Plan mode">None</td><td data-label="Kaldor intent">A log you can read</td></tr>
+        </tbody>
+      </table>
+      <p>The two work together. Use plan mode to explore and shape the solution, then draw the Kaldor intent from it (goal, expected behavior, what must not be touched, expected files): that intent becomes the reference every commit is judged against.</p>
     </section>
 
     <section id="install" aria-labelledby="install-h">

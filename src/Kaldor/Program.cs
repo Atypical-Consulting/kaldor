@@ -27,7 +27,7 @@ try
 {
     return args switch
     {
-        ["gate"] => Gate.Run(Console.In.ReadToEnd(), Console.Error, review),
+        ["gate"] => Gate.Run(Console.In.ReadToEnd(), Console.Error, review, output: Console.Out),
         ["check"] => Commands.Check(cwd, review, Environment.GetEnvironmentVariable("CLAUDECODE") == "1", Console.Error),
         ["init"] => Commands.Init(cwd),
         ["intent", "freeze"] => Commands.Freeze(cwd),

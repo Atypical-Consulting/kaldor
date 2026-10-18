@@ -479,6 +479,161 @@ public sealed class BypassTests : IDisposable
         Assert.NotEqual(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
     }
 
+    /// <summary>The gate for <paramref name="command"/> in <paramref name="mode"/>, with its stdout.</summary>
+    (int Code, string Err, string Out) AskHook(string command, string? mode = "default", string tool = "Bash")
+    {
+        var input = JsonSerializer.Serialize(new
+        {
+            cwd = _root, tool_name = tool, tool_input = new { command }, hook_event_name = "PreToolUse", permission_mode = mode,
+        });
+        var (err, output) = (new StringWriter(), new StringWriter());
+        var code = Gate.Run(input, err, FakeReview, new Dictionary<string, string?>(), output);
+        return (code, err.ToString(), output.ToString());
+    }
+
+    /// <summary>The ticket, the prompt text and the rewritten command of an <c>ask</c> decision.</summary>
+    static (string Ticket, string Reason, string Command) Asked((int Code, string Err, string Out) hook)
+    {
+        Assert.Equal(0, hook.Code);
+        Assert.Equal("", hook.Err);
+        var output = System.Text.Json.Nodes.JsonNode.Parse(hook.Out)!["hookSpecificOutput"]!;
+        Assert.Equal("PreToolUse", output["hookEventName"]!.GetValue<string>());
+        Assert.Equal("ask", output["permissionDecision"]!.GetValue<string>());
+        var command = output["updatedInput"]!["command"]!.GetValue<string>();
+        var ticket = System.Text.RegularExpressions.Regex.Match(command, "KALDOR_TICKET='?([0-9a-f]{64})").Groups[1].Value;
+        Assert.NotEqual("", ticket);
+        return (ticket, output["permissionDecisionReason"]!.GetValue<string>(), command);
+    }
+
+    [Fact]
+    public void The_gate_asks_the_user_and_the_ticket_it_hands_out_confirms_once()
+    {
+        FreezeIntent(confirm: false);
+        var (ticket, reason, command) = Asked(AskHook("kaldor intent confirm"));
+        Assert.Contains("Goal: change a.txt", reason);
+        Assert.Equal($"KALDOR_TICKET={ticket} kaldor intent confirm", command);
+        Assert.DoesNotContain(ticket, File.ReadAllText(_repo.StatePath));
+
+        Assert.Equal(0, Cli(ticket, "intent", "confirm").Code);
+        Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+        Assert.Contains("(Claude Code prompt)", Cli(null, "report").Out);
+
+        _repo.SaveState(_repo.LoadState() with { ConfirmedHash = null });
+        AssertRefused(Cli(ticket, "intent", "confirm"));
+        Assert.Null(_repo.LoadState().ConfirmedHash);
+    }
+
+    [Fact]
+    public void Only_the_latest_ticket_is_valid()
+    {
+        FreezeIntent(confirm: false);
+        var first = Asked(AskHook("kaldor intent confirm")).Ticket;
+        Asked(AskHook("kaldor intent confirm"));
+        AssertRefused(Cli(first, "intent", "confirm"));
+        Assert.Null(_repo.LoadState().ConfirmedHash);
+    }
+
+    [Theory]
+    [InlineData("Bash", "dnx --yes Atypical.Kaldor intent confirm", "KALDOR_TICKET=")]
+    [InlineData("Bash", "dnx Atypical.Kaldor intent confirm", "KALDOR_TICKET=")]
+    [InlineData("PowerShell", "kaldor intent confirm", "$env:KALDOR_TICKET='")]
+    public void The_prompt_route_takes_dnx_and_PowerShell(string tool, string command, string prefix)
+    {
+        FreezeIntent(confirm: false);
+        var asked = Asked(AskHook(command, tool: tool));
+        Assert.StartsWith(prefix + asked.Ticket, asked.Command);
+        Assert.EndsWith(" " + command, asked.Command);
+    }
+
+    [Theory]
+    [InlineData("bypassPermissions")]
+    [InlineData("dontAsk")]
+    [InlineData("auto")]
+    [InlineData(null)]
+    public void The_gate_refuses_when_no_person_would_see_the_prompt(string? mode)
+    {
+        FreezeIntent(confirm: false);
+        var (code, err, output) = AskHook("kaldor intent confirm", mode);
+        Assert.Equal(2, code);
+        Assert.Contains("reserved for the user", err);
+        Assert.Equal("", output);
+        Assert.Null(_repo.LoadState().Pending);
+    }
+
+    [Theory]
+    [InlineData("kaldor intent confirm && true")]
+    [InlineData("bash -c \"kaldor intent confirm\"")]
+    [InlineData("echo y | kaldor intent confirm")]
+    [InlineData("kaldor intent confirm --all")]
+    [InlineData("KALDOR_TICKET=x kaldor intent confirm")]
+    [InlineData("kaldor  intent confirm")]
+    [InlineData("kaldor intent confirm\nkaldor approve")]
+    [InlineData("kaldor intent confirm # ok")]
+    public void The_gate_asks_only_for_the_command_alone(string command)
+    {
+        FreezeIntent(confirm: false);
+        var (code, _, output) = AskHook(command);
+        Assert.Equal(2, code);
+        Assert.Equal("", output);
+        Assert.Null(_repo.LoadState().Pending);
+    }
+
+    [Fact]
+    public void The_gate_does_not_ask_with_nothing_to_vouch_for()
+    {
+        FreezeIntent(); // already confirmed
+        Assert.Equal(2, AskHook("kaldor intent confirm").Code);
+        Assert.Equal(2, AskHook("kaldor approve").Code); // nothing staged
+        Assert.Equal(2, AskHook("kaldor intent amend --accept").Code); // no amendment
+        Assert.Null(_repo.LoadState().Pending);
+    }
+
+    [Fact]
+    public void An_approve_ticket_is_bound_to_the_staged_diff()
+    {
+        FreezeIntent();
+        Stage("one");
+        var stale = Asked(AskHook("kaldor approve"));
+        Assert.Contains("a.txt", stale.Reason);
+        Stage("two");
+        AssertRefused(Cli(stale.Ticket, "approve"));
+        Assert.DoesNotContain(_repo.LoadState().Passes, p => p.By == "approve");
+
+        var ticket = Asked(AskHook("dnx Atypical.Kaldor approve")).Ticket;
+        Assert.Equal(0, Cli(ticket, "approve").Code);
+        Assert.Contains(_repo.LoadState().Passes, p => p.By == "approve" && p.DiffHash == Repo.Hash(_repo.StagedDiff()));
+        Assert.Contains("(Claude Code prompt)", Cli(null, "report").Out);
+    }
+
+    [Fact]
+    public void An_amendment_ticket_is_bound_to_the_amendment()
+    {
+        FreezeIntent();
+        Assert.Equal(0, Commands.ProposeAmendment(_root, "Also add a cache."));
+        var stale = Asked(AskHook("kaldor intent amend --accept"));
+        Assert.Contains("Also add a cache.", stale.Reason);
+        Assert.Equal(0, Commands.ProposeAmendment(_root, "Also add a queue."));
+        var before = File.ReadAllText(_repo.IntentPath);
+        AssertRefused(Cli(stale.Ticket, "intent", "amend", "--accept"));
+        Assert.Equal(before, File.ReadAllText(_repo.IntentPath));
+
+        var ticket = Asked(AskHook("kaldor intent amend --accept")).Ticket;
+        Assert.Equal(0, Cli(ticket, "intent", "amend", "--accept").Code);
+        Assert.Contains("Also add a queue.", File.ReadAllText(_repo.IntentPath));
+        Assert.Equal(_repo.LoadState().IntentHash, _repo.LoadState().ConfirmedHash);
+    }
+
+    [Fact]
+    public void A_ticket_for_one_command_does_not_run_another()
+    {
+        FreezeIntent(confirm: false);
+        Stage();
+        var ticket = Asked(AskHook("kaldor intent confirm")).Ticket;
+        AssertRefused(Cli(ticket, "approve"));
+        AssertRefused(Cli(ticket, "intent", "confirm")); // used up by the attempt
+        Assert.DoesNotContain(_repo.LoadState().Passes, p => p.By == "approve");
+    }
+
     const string Draft = "# Intent\nGoal: change a.txt\n";
 
     void Queue(string name, string text)

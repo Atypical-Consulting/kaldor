@@ -48,8 +48,8 @@ static class Commands
         Console.WriteLine($"Created {Path.GetRelativePath(cwd, repo.RulesPath)}. Commit .kaldor/ yourself, from your own " +
                           "terminal: Kaldor refuses Claude's commits until a task intent is frozen and confirmed.");
 
-        var hook = Path.GetFullPath(Path.Combine(repo.Root, Proc.Git(repo.Root, "rev-parse", "--git-path", "hooks/pre-commit").Trim()));
-        if (File.Exists(hook) && !File.ReadAllText(hook).Contains("Atypical.Kaldor"))
+        var hook = repo.HookPath;
+        if (File.Exists(hook) && !repo.HookInstalled)
         {
             Console.WriteLine($"A pre-commit hook already exists at {hook}. Add this line to it so commits made from scripts are reviewed too:");
             Console.WriteLine($"  [ \"$CLAUDECODE\" = \"1\" ] && dnx --yes --version {Version} Atypical.Kaldor check || true");
@@ -90,13 +90,12 @@ static class Commands
                 "starting a new task, or propose a change to the current intent with `kaldor intent amend \"<text>\"`.");
 
         repo.SaveState(state with { IntentHash = hash });
-        repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", null, null, hash, intent, null, null, null));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "freeze", IntentHash: hash, Intent: intent));
         Console.WriteLine($"Intent frozen ({hash[..19]}…). Ask the user to run {ForUser("intent confirm")}: " +
                           "commits wait for it, edits do not. Run `kaldor intent wait` in the background to continue as soon as they do.");
         return 0;
     }
 
-    /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
     /// <summary>
     /// For the agent: returns as soon as the user has confirmed the frozen intent, so nobody has to report it.
     /// Read-only; exit 1 when there is nothing to wait for, or on timeout.
@@ -105,19 +104,17 @@ static class Commands
     {
         var repo = RequireRepo(cwd);
         var deadline = DateTime.UtcNow + timeout;
+        var delay = poll ?? TimeSpan.FromSeconds(1);
         while (true)
         {
             State state;
             try { state = repo.LoadState(); }
             catch (Exception e) when (e is JsonException or IOException)
             {
-                Thread.Sleep(poll ?? TimeSpan.FromSeconds(1)); // caught the user's terminal mid-write: read again
+                Thread.Sleep(delay); // caught the user's terminal mid-write: read again
                 continue;
             }
-            var intent = repo.ReadIntent();
-            if (state.IntentHash is null || intent is null) throw new KaldorException("No frozen intent to wait for.");
-            if (Repo.Hash(intent) != state.IntentHash)
-                throw new KaldorException("The intent changed after it was frozen; restore it or freeze it again first.");
+            FrozenIntent(repo, state, "wait for");
             if (state.ConfirmedHash == state.IntentHash)
             {
                 Console.WriteLine("Intent confirmed.");
@@ -129,19 +126,27 @@ static class Commands
                                         $"({ForUser("intent confirm")}). Run `kaldor intent wait` again, or check in with them.");
                 return 1;
             }
-            Thread.Sleep(poll ?? TimeSpan.FromSeconds(1));
+            Thread.Sleep(delay);
         }
     }
 
+    /// <summary>The frozen intent, unchanged since it was frozen; throws otherwise.</summary>
+    static string FrozenIntent(Repo repo, State state, string verb)
+    {
+        var intent = repo.ReadIntent();
+        if (state.IntentHash is null || intent is null) throw new KaldorException($"No frozen intent to {verb}.");
+        if (Repo.Hash(intent) != state.IntentHash)
+            throw new KaldorException("The intent changed after it was frozen; restore it or freeze it again first.");
+        return intent;
+    }
+
+    /// <summary>The user confirms the frozen intent: the agent froze it, only a person can vouch for it.</summary>
     public static int ConfirmIntent(string cwd)
     {
         RequireTerminal("intent confirm");
         var repo = RequireRepo(cwd);
         var state = repo.LoadState();
-        var intent = repo.ReadIntent();
-        if (state.IntentHash is null || intent is null) throw new KaldorException("No frozen intent to confirm.");
-        if (Repo.Hash(intent) != state.IntentHash)
-            throw new KaldorException("The intent changed after it was frozen; restore it or freeze it again first.");
+        var intent = FrozenIntent(repo, state, "confirm");
         if (state.ConfirmedHash == state.IntentHash)
         {
             Console.WriteLine("This intent is already confirmed.");
@@ -159,7 +164,7 @@ static class Commands
     {
         var hash = Repo.Hash(intent);
         repo.SaveState(repo.LoadState() with { ConfirmedHash = hash });
-        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", null, null, hash, intent, null, null, $"Confirmed by {Environment.UserName}"));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "confirm", IntentHash: hash, Intent: intent, Summary: $"Confirmed by {Environment.UserName}"));
     }
 
     public static int ProposeAmendment(string cwd, string text)
@@ -167,7 +172,7 @@ static class Commands
         var repo = RequireRepo(cwd);
         if (repo.LoadState().IntentHash is null) throw new KaldorException("No frozen intent to amend.");
         repo.SaveAmendment(text.Trim() + "\n");
-        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-proposed", null, null, null, text, null, null, null));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-proposed", Intent: text));
         Console.WriteLine($"Amendment proposed. Ask the user to run {ForUser("intent amend --accept")}.");
         return 0;
     }
@@ -194,7 +199,7 @@ static class Commands
         var hash = Repo.Hash(intent);
         repo.SaveState(repo.LoadState() with { IntentHash = hash, ConfirmedHash = hash });
         File.Delete(repo.AmendmentPath);
-        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", null, null, hash, intent, null, null, null));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "amend-accepted", IntentHash: hash, Intent: intent));
     }
 
     /// <summary>The git pre-commit hook: same check as the gate, for commits the gate could not see.</summary>
@@ -232,7 +237,7 @@ static class Commands
         var verdict = e.Verdict switch { "pass" => "ACCEPTED", "block" => "BLOCKED", "approve" => "FORCED", _ => "" };
         var where = otherWorktree is null ? "" : $"  [worktree {otherWorktree}]";
         Console.WriteLine($"{e.At:yyyy-MM-dd HH:mm}  {e.Kind,-15} {verdict}{where}");
-        if (e.Kind != "review" && e.Kind != "dry-run" && e.Kind != "approve" && e.Intent is not null)
+        if (e.Kind is not ("review" or "dry-run" or "approve") && e.Intent is not null)
             Console.WriteLine($"  intent     {FirstLine(e.Intent)}");
         foreach (var d in e.Deviations ?? []) Console.WriteLine($"  deviation  {d}");
         var hunks = e.Hunks ?? [];
@@ -254,15 +259,15 @@ static class Commands
         if (diff.Length == 0) throw new KaldorException("Nothing is staged.");
         var (diffHash, intentHash) = (Repo.Hash(diff), Repo.Hash(intent));
 
-        var last = repo.ReadLog().LastOrDefault(e => e.Kind == "review" && e.DiffHash == diffHash);
+        var last = repo.LatestReview(e => e.DiffHash == diffHash);
         if (last is not null) Print(last);
         if (!ConfirmByHuman("Force this staged diff through without a passing review?")) return 1;
 
         var state = repo.LoadState();
         state.Passes.Add(new Pass(diffHash, intentHash, "approve"));
         repo.SaveState(state with { IntentHash = state.IntentHash ?? intentHash });
-        repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve", diffHash, intentHash, intent, null, null,
-            $"Forced by {Environment.UserName}"));
+        repo.Log(new LogEntry(DateTimeOffset.Now, "approve", "approve", diffHash, intentHash, intent,
+            Summary: $"Forced by {Environment.UserName}"));
         Console.WriteLine("Approved. The agent can now commit this exact staged diff.");
         return 0;
     }
@@ -276,6 +281,10 @@ static class Commands
             Console.WriteLine($"{(pass ? "ok  " : "FAIL")}  {text}{(pass || fix is null ? "" : $"\n      {fix}")}");
         }
 
+        // Started first, read below: the request runs while the local checks do.
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        var index = http.GetStringAsync("https://api.nuget.org/v3-flatcontainer/atypical.kaldor/index.json");
+
         Line(Try("git", "--version") is not null, "git is on PATH", "Install git.");
         var claude = Try("claude", "--version");
         var version = claude is null ? null : System.Version.TryParse(claude.Split(' ')[0], out var v) ? v : null;
@@ -288,9 +297,7 @@ static class Commands
         // A warning only: being offline or one release behind must not fail the doctor.
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var index = http.GetStringAsync("https://api.nuget.org/v3-flatcontainer/atypical.kaldor/index.json").Result;
-            Console.WriteLine(NewerPublished(Version, index) is { } latest
+            Console.WriteLine(NewerPublished(Version, index.Result) is { } latest
                 ? $"warn  Kaldor {Version} is running; {latest} is published\n      In Claude Code: /plugin marketplace update kaldor, then /reload-plugins"
                 : $"ok    Kaldor {Version} is the latest published version");
         }
@@ -312,8 +319,7 @@ static class Commands
             try { repo.LoadRules(); Line(true, "rules.json is valid"); }
             catch (JsonException ex) { Line(false, "rules.json is valid", ex.Message); }
         }
-        var hook = Path.Combine(repo.Root, Proc.Git(repo.Root, "rev-parse", "--git-path", "hooks/pre-commit").Trim());
-        Line(File.Exists(hook) && File.ReadAllText(hook).Contains("Atypical.Kaldor"), "git pre-commit hook installed", "Run `kaldor init`.");
+        Line(repo.HookInstalled, "git pre-commit hook installed", "Run `kaldor init`.");
         Console.WriteLine($"      intent: {(repo.LoadState().IntentHash is null ? "none frozen" : "frozen")}");
         return ok ? 0 : 1;
     }
@@ -324,7 +330,7 @@ static class Commands
         var versions = JsonDocument.Parse(indexJson).RootElement.GetProperty("versions").EnumerateArray()
             .Select(v => System.Version.TryParse(v.GetString(), out var parsed) ? parsed : null) // pre-releases do not parse
             .OfType<System.Version>();
-        var latest = versions.DefaultIfEmpty().Max();
+        var latest = versions.Max();
         return latest is not null && System.Version.TryParse(running, out var current) && latest > current
             ? latest.ToString()
             : null;

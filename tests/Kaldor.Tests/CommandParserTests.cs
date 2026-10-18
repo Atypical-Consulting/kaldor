@@ -6,7 +6,7 @@ public class CommandParserTests
     static readonly Func<string, IReadOnlyDictionary<string, string>> NoAliases = _ => new Dictionary<string, string>();
 
     static List<CommitCall> Find(string command, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
-        CommandParser.FindCommits(command, Cwd, aliases ?? NoAliases);
+        CommandParser.Analyze(command, Cwd, aliases ?? NoAliases).Commits;
 
     [Theory]
     [InlineData("git commit -m 'x'")]
@@ -100,7 +100,7 @@ public class CommandParserTests
     [InlineData("gh issue create --body \"blocked by kaldor approve; see #7\"", false)]
     [InlineData("echo $((1 << 2)) \"kaldor approve\"", false)]
     public void Spots_human_only_commands(string command, bool humanOnly) =>
-        Assert.Equal(humanOnly, CommandParser.RunsHumanOnlyCommand(command, Cwd, NoAliases));
+        Assert.Equal(humanOnly, CommandParser.Analyze(command, Cwd, NoAliases).HumanOnly);
 
     [Theory]
     [InlineData("cat <<'EOF'\ngit commit -m x\nEOF")]

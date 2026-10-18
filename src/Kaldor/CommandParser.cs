@@ -21,10 +21,12 @@ static class CommandParser
     // Git refuses aliases that shadow a builtin, so only an unknown subcommand can be an alias.
     static readonly HashSet<string> Builtins =
     [
-        "add", "am", "apply", "bisect", "blame", "branch", "checkout", "cherry-pick", "clean", "clone", "config",
-        "describe", "diff", "fetch", "format-patch", "gc", "grep", "init", "log", "ls-files", "merge", "mv", "notes",
-        "pull", "push", "rebase", "reflog", "remote", "reset", "restore", "rev-parse", "revert", "rm", "shortlog",
-        "show", "stash", "status", "submodule", "switch", "tag", "worktree",
+        "add", "am", "apply", "archive", "bisect", "blame", "branch", "cat-file", "check-ignore", "checkout", "cherry",
+        "cherry-pick", "clean", "clone", "config", "describe", "diff", "fetch", "for-each-ref", "format-patch", "gc",
+        "grep", "help", "init", "log", "ls-files", "ls-remote", "ls-tree", "merge", "merge-base", "mv", "name-rev",
+        "notes", "pull", "push", "range-diff", "rebase", "reflog", "remote", "reset", "restore", "rev-list", "rev-parse",
+        "revert", "rm", "shortlog", "show", "show-ref", "sparse-checkout", "stash", "status", "submodule", "switch",
+        "symbolic-ref", "tag", "var", "worktree",
     ];
 
     public sealed class Findings
@@ -35,24 +37,17 @@ static class CommandParser
         public readonly List<string> Writes = [];
     }
 
-    /// <summary>Everything the gate needs to know about a command, in one pass.</summary>
-    public static Findings Analyze(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
-        ScanAll(command, cwd, aliases);
-
     /// <summary>
-    /// True when the command runs <c>kaldor approve</c>, <c>kaldor intent confirm</c> or <c>kaldor intent amend --accept</c>, directly or through
-    /// <c>dnx</c> / <c>dotnet</c>. A mention in quoted text, a comment or a quoted heredoc is not a run.
+    /// Everything the gate needs to know about a command, in one pass. <see cref="Findings.HumanOnly"/> is true when it
+    /// runs <c>kaldor approve</c>, <c>kaldor intent confirm</c> or <c>kaldor intent amend --accept</c>, directly or
+    /// through <c>dnx</c> / <c>dotnet</c>; a mention in quoted text, a comment or a quoted heredoc is not a run.
     /// </summary>
-    public static bool RunsHumanOnlyCommand(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
-        ScanAll(command, cwd, aliases).HumanOnly;
-
-    public static List<CommitCall> FindCommits(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null) =>
-        ScanAll(command, cwd, aliases).Commits;
-
-    static Findings ScanAll(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases)
+    public static Findings Analyze(string command, string cwd, Func<string, IReadOnlyDictionary<string, string>>? aliases = null)
     {
         var found = new Findings();
-        Scan(command, cwd, aliases ?? GitAliases, found, depth: 0);
+        var lookup = aliases ?? GitAliases;
+        var cache = new Dictionary<string, IReadOnlyDictionary<string, string>>();
+        Scan(command, cwd, dir => cache.TryGetValue(dir, out var known) ? known : cache[dir] = lookup(dir), found, depth: 0);
         return found;
     }
 
